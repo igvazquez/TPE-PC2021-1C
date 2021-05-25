@@ -104,7 +104,7 @@ buffer_compact(buffer *b) {
 
 void print_buffer(buffer * b){
     printf("data: %s\n",b->data);
-    printf("limit: %d\n", b->limit);
-    printf("w: %d\n", b->write);
-    printf("r: %d\n", b->read);
+    printf("limit: %d\n", b->limit - b->data);
+    printf("w: %d\n", b->write - b->data);
+    printf("r: %d\n", b->read - b->data);
 }

@@ -220,7 +220,7 @@ static struct httpd *httpd_new(int client_fd){
     ret->origin_fd = -1;
 
     buffer_init(&ret->from_client_buffer, N(ret->from_client_buffer_data), ret->from_client_buffer_data);
-    buffer_init(&ret->from_origin_buffer, N(ret->from_origin_buffer_data), ret->from_client_buffer_data);
+    buffer_init(&ret->from_origin_buffer, N(ret->from_origin_buffer_data), ret->from_origin_buffer_data);
     return ret;
 }
 
@@ -469,11 +469,6 @@ static unsigned copy_read(struct selector_key *key){
 
     unsigned ret = COPY;
 
-    printf("%d)Escribi %d bytes\n",key->fd, numBytesRead);
-    printf("READ BUFFER\n");
-    print_buffer(copy->rb);
-    printf("\nWRITE BUFFER\n");
-    print_buffer(copy->wb);
     if(numBytesRead < 0){
         ret = ERROR;
     }else if(numBytesRead == 0){
@@ -490,6 +485,11 @@ static unsigned copy_read(struct selector_key *key){
     }else{
         // se leyó algo
         buffer_write_adv(copy->rb, numBytesRead);
+        printf("%d)Escribi %d bytes\n",key->fd, numBytesRead);
+        printf("READ BUFFER\n");
+        print_buffer(copy->rb);
+        printf("\nWRITE BUFFER\n");
+        print_buffer(copy->wb);
     }
     selector_set_new_interest(copy,key->s);
     selector_set_new_interest(copy->copy_to,key->s);
@@ -509,11 +509,6 @@ static unsigned copy_write(struct selector_key *key){
    
     unsigned ret = COPY;
 
-    printf("%d)Escribi %d bytes\n",key->fd, numBytesWritten);
-    printf("READ BUFFER\n");
-    print_buffer(copy->rb);
-    printf("\nWRITE BUFFER\n");
-    print_buffer(copy->wb);
     if(numBytesWritten < 0){
         ret = ERROR;
     }else if(numBytesWritten == 0){
@@ -530,6 +525,11 @@ static unsigned copy_write(struct selector_key *key){
     }else{
         // se escribió algo
         buffer_read_adv(copy->wb, numBytesWritten);
+        printf("%d)Escribi %d bytes\n",key->fd, numBytesWritten);
+        printf("READ BUFFER\n");
+        print_buffer(copy->rb);
+        printf("\nWRITE BUFFER\n");
+        print_buffer(copy->wb);
     }
     selector_set_new_interest(copy,key->s);
     selector_set_new_interest(copy->copy_to,key->s);
