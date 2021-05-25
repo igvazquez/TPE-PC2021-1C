@@ -96,6 +96,8 @@ struct buffer {
     uint8_t *write;
 };
 
+void print_buffer(buffer *b);
+
 /**
  * inicializa el buffer sin utilizar el heap
  */

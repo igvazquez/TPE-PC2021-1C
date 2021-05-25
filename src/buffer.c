@@ -5,7 +5,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <assert.h>
-
+#include <stdio.h>
 #include "../include/buffer.h"
 
 inline void
@@ -100,4 +100,11 @@ buffer_compact(buffer *b) {
         b->read  = b->data;
         b->write = b->data + n;
     }
+}
+
+void print_buffer(buffer * b){
+    printf("data: %s\n",b->data);
+    printf("limit: %d\n", b->limit);
+    printf("w: %d\n", b->write);
+    printf("r: %d\n", b->read);
 }

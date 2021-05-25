@@ -458,6 +458,7 @@ handle_iteration(fd_selector s) {
             key.fd   = item->fd;
             key.data = item->data;
             if(FD_ISSET(item->fd, &s->slave_r)) {
+                printf("quiero leer: %d\n",item->fd);
                 if(OP_READ & item->interest) {
                     if(0 == item->handler->handle_read) {
                         assert(("OP_READ arrived but no handler. bug!" == 0));
@@ -468,6 +469,7 @@ handle_iteration(fd_selector s) {
             }
             if(FD_ISSET(i, &s->slave_w)) {
                 if(OP_WRITE & item->interest) {
+                    // printf("quiero escribir: %d\n",item->fd);
                     if(0 == item->handler->handle_write) {
                         assert(("OP_WRITE arrived but no handler. bug!" == 0));
                     } else {

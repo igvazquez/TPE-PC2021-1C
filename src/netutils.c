@@ -48,6 +48,7 @@ sockaddr_to_human(char *buff, const size_t buffsize,
 
     if(handled) {
         snprintf(buff + len, buffsize - len, "%d", ntohs(port));
+    
     }
     buff[buffsize - 1] = 0;
 

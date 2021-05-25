@@ -163,9 +163,11 @@ httpd_read(struct selector_key *key) {
 static void
 httpd_write(struct selector_key *key) {
     struct state_machine *stm   = &(ATTACHMENT(key)->stm);
+
     const enum httpd_state st = stm_handler_write(stm, key);
 
     if(ERROR == st || DONE == st) {
+
         httpd_done(key);
     }
 }
@@ -210,7 +212,7 @@ static struct httpd *httpd_new(int client_fd){
     }
     memset(ret, 0x00, sizeof(*ret));
     ret->stm.states = client_statbl;
-    ret->stm.initial = COPY;
+    ret->stm.initial = CONNECTING;
     ret->stm.max_state = ERROR;
     stm_init(&(ret->stm));
 
@@ -254,7 +256,7 @@ httpd_passive_accept(struct selector_key *key) {
     }
     memcpy(&state->client_addr, &client_addr, client_addr_len);
     state->client_addr_len = client_addr_len;
- 
+
     //TODO para proxy TCP llenar state->origin_addr con una IP harcodeada
 
     struct sockaddr_storage origin_addr;
@@ -292,6 +294,7 @@ httpd_passive_accept(struct selector_key *key) {
 
 
 fail:
+    printf("fail:\n");
     if(client != -1) {
         close(client);
     }
@@ -322,11 +325,12 @@ static void connect_to_origin(fd_selector s,struct httpd *data){
     if(connect(origin_fd,(const struct sockaddr*)&data->origin_addr,data->origin_addr_len) == -1){
         if(errno == EINPROGRESS){
             // se esta conectando
-            printf("Connect to origin EINPROGRESS\n");
+            printf("Connect to origin EINPROGRESS origin_fd %d\n",origin_fd);
             // registro el origin_fd para escritura para que me avise cuando si conectó o falló conexión
             selector_status ss = selector_register(s, origin_fd, &httpd_handler, OP_WRITE, data);
 
             if(ss != SELECTOR_SUCCESS){
+                printf("fail register origin_fd to OP_WRITE\n");
                 error = true;
                 goto finally;
             }
@@ -342,6 +346,7 @@ static void connect_to_origin(fd_selector s,struct httpd *data){
     }
 finally:
     if(error){
+        printf("aborto connect to origin\n");
         abort();
     }
 }
@@ -350,6 +355,7 @@ finally:
 
 static void connecting_init(const unsigned state,struct selector_key *key){
     assert(state == CONNECTING);
+    printf("connecting init\n");
     struct connecting * connecting = &(ATTACHMENT(key)->origin.connecting);
 
     connecting->client_fd = ATTACHMENT(key)->client_fd;
@@ -358,27 +364,37 @@ static void connecting_init(const unsigned state,struct selector_key *key){
 
 
 static unsigned connecting_done(struct selector_key *key){
+    printf("Connecting done\n");
     int socket_error;
     socklen_t socket_error_len = sizeof(socket_error);
     bool error = false;
     struct connecting * connecting = &(ATTACHMENT(key)->origin.connecting);
     // verifico si se conectó exitosamente al origin server
     if(getsockopt(connecting->origin_fd,SOL_SOCKET,SO_ERROR,&socket_error,&socket_error_len) == 0){
-        if(error == 0){
+        if(socket_error == 0){
             // se conectó bien
-           
-           // quiero leer del cliente
-           if(SELECTOR_SUCCESS != selector_set_interest(key->s,connecting->client_fd,OP_READ)){
-               error = true;
-               goto finally;
+            printf("Me conecte bien a fd %d\n", connecting->origin_fd);
+             printf("1.socket_error == %d\n",socket_error);
+            // quiero leer del cliente
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->client_fd, OP_READ))
+            {
+                error = true;
+                goto finally;
+           }
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->origin_fd, OP_NOOP))
+            {
+                error = true;
+                goto finally;
            }
         }else{
+            printf("2.socket_error == %d\n",socket_error);
             // hubo error en la conexión
             // TODO a futuro supongo que habrá un estado para reintentar conexión o devolver mensaje al usuario
             error = true;
             goto finally;
         }
     }else{
+        printf("getsockopt != 0\n");
         error = true;
         goto finally;
     }
@@ -392,6 +408,7 @@ finally:
 
 static void copy_init(const unsigned state,struct selector_key *key){
     assert(state == COPY);
+    printf("COPY_INIT\n");
     struct httpd *data = ATTACHMENT(key);
     struct copy *copy = &data->client.copy;
 
@@ -403,7 +420,7 @@ static void copy_init(const unsigned state,struct selector_key *key){
 
     copy = &data->origin.copy;
     copy->fd = data->origin_fd;
-    copy->copy_to = &data->origin.copy;
+    copy->copy_to = &data->client.copy;
     copy->interest = OP_READ | OP_WRITE;
     copy->rb = &data->from_client_buffer;
     copy->wb = &data->from_origin_buffer;
@@ -414,34 +431,49 @@ static struct copy *get_copy_from_key(struct selector_key *key){
     return copy->fd == key->fd ? copy : copy->copy_to;
 }
 
-static void selector_set_new_interest(struct copy* copy,struct selector_key *key){
+static void selector_set_new_interest(struct copy* copy,fd_selector s){
 
+    printf("%d) set new interest\n",copy->fd);
     assert(copy->fd > 0);
 
     fd_interest new_interests = OP_NOOP;
 
     if((copy->interest & OP_READ) && buffer_can_write(copy->rb)){
+        printf("Agrego OP READ  a fd: %d\n", copy->fd);
         new_interests |= OP_READ;
+    }else{
+         printf("no agrego read\n");
     }
     if((copy->interest & OP_WRITE) && buffer_can_read(copy->wb)){
+    
+        printf("buffer wb: %s\n", copy->wb->data);
+        printf("Agrego OP_WRITE  a fd: %d\n", copy->fd);
         new_interests |= OP_WRITE;
+    }else{
+        printf("no agrego write\n");
     }
-    if(SELECTOR_SUCCESS != selector_set_interest_key(key,new_interests)){
+    
+    if(SELECTOR_SUCCESS != selector_set_interest(s,copy->fd,new_interests)){
         abort();
     }
 }
 static unsigned copy_read(struct selector_key *key){
-
+    printf("COPY_READ\n");
     struct copy *copy = get_copy_from_key(key);
 
     size_t wbytes;
     /* quiero escribir en el read buffer de copy */
     uint8_t *read_buffer_ptr = buffer_write_ptr(copy->rb, &wbytes);
-
+    printf("wbytes = %d\n", wbytes);
     ssize_t numBytesRead = recv(key->fd, read_buffer_ptr, wbytes,0);
 
     unsigned ret = COPY;
 
+    printf("%d)Escribi %d bytes\n",key->fd, numBytesRead);
+    printf("READ BUFFER\n");
+    print_buffer(copy->rb);
+    printf("\nWRITE BUFFER\n");
+    print_buffer(copy->wb);
     if(numBytesRead < 0){
         ret = ERROR;
     }else if(numBytesRead == 0){
@@ -459,24 +491,29 @@ static unsigned copy_read(struct selector_key *key){
         // se leyó algo
         buffer_write_adv(copy->rb, numBytesRead);
     }
-    selector_set_new_interest(copy,key);
-    selector_set_new_interest(copy->copy_to,key);
+    selector_set_new_interest(copy,key->s);
+    selector_set_new_interest(copy->copy_to,key->s);
     return ret;
 }
 
 static unsigned copy_write(struct selector_key *key){
 
+    printf("COPY_WRITE\n");
     struct copy *copy = get_copy_from_key(key);
 
-    size_t wbytes;
+    size_t rbytes;
     /* quiero leer en el write buffer de copy */
-    uint8_t *write_buffer_ptr = buffer_read_ptr(copy->wb, &wbytes);
-
-    ssize_t numBytesWritten = send(key->fd, write_buffer_ptr, wbytes,MSG_NOSIGNAL);
-
+    uint8_t *write_buffer_ptr = buffer_read_ptr(copy->wb, &rbytes);
+    printf("rbytes %d \n", rbytes);
+    ssize_t numBytesWritten = send(key->fd, write_buffer_ptr, rbytes,MSG_NOSIGNAL);
+   
     unsigned ret = COPY;
 
-
+    printf("%d)Escribi %d bytes\n",key->fd, numBytesWritten);
+    printf("READ BUFFER\n");
+    print_buffer(copy->rb);
+    printf("\nWRITE BUFFER\n");
+    print_buffer(copy->wb);
     if(numBytesWritten < 0){
         ret = ERROR;
     }else if(numBytesWritten == 0){
@@ -494,8 +531,8 @@ static unsigned copy_write(struct selector_key *key){
         // se escribió algo
         buffer_read_adv(copy->wb, numBytesWritten);
     }
-    selector_set_new_interest(copy,key);
-    selector_set_new_interest(copy->copy_to,key);
+    selector_set_new_interest(copy,key->s);
+    selector_set_new_interest(copy->copy_to,key->s);
     return ret;
 
 }
