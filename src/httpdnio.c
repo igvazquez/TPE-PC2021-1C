@@ -193,6 +193,7 @@ httpd_done(struct selector_key* key) {
         ATTACHMENT(key)->client_fd,
         ATTACHMENT(key)->origin_fd,
     };
+    printf("Cierro conexión entre cliente %d y origin %d\n", fds[0], fds[1]);
     for(unsigned i = 0; i < N(fds); i++) {
         if(fds[i] != -1) {
             if(SELECTOR_SUCCESS != selector_unregister_fd(key->s, fds[i])) {
@@ -238,10 +239,15 @@ httpd_passive_accept(struct selector_key *key) {
     const int client = accept(key->fd, (struct sockaddr*) &client_addr,
                                                           &client_addr_len);
 
+
     if(client == -1) {
         goto fail;
     }
-    printf("Cliente %d aceptado.\n",client);
+  
+    char buff2[30];
+    sockaddr_to_human(buff2, 50, (struct sockaddr *)&client_addr);
+    //esto esta mal
+    printf("Conexión entrante de %s\n", buff2);
     if(selector_fd_set_nio(client) == -1) {
         goto fail;
     }
@@ -269,10 +275,7 @@ httpd_passive_accept(struct selector_key *key) {
         goto fail;
     }
 
-    printf("Corrio inet_pton\n");
-
     memcpy(&state->origin_addr, &origin_addr, sizeof(origin_addr));
-    printf("Corrio memcpy\n");
     // no quiero leer desde el cliente hasta que me conecte con el origen
     if(SELECTOR_SUCCESS != selector_register(key->s, client, &httpd_handler,
                                               OP_NOOP, state)) {
@@ -285,10 +288,7 @@ httpd_passive_accept(struct selector_key *key) {
 
     connect_to_origin(key->s,state);
 
-    char buff2[30];
-    sockaddr_to_human(buff2, 50, (struct sockaddr *)&client_addr);
-    //esto esta mal
-    printf("Conexión entrante de %s\n", buff2);
+
     return ;
     
 
@@ -374,13 +374,14 @@ static unsigned connecting_done(struct selector_key *key){
         if(socket_error == 0){
             // se conectó bien
             printf("Me conecte bien a fd %d\n", connecting->origin_fd);
-             printf("1.socket_error == %d\n",socket_error);
+        
             // quiero leer del cliente
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->client_fd, OP_READ))
             {
                 error = true;
                 goto finally;
            }
+       
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->origin_fd, OP_NOOP))
             {
                 error = true;
@@ -445,8 +446,7 @@ static void selector_set_new_interest(struct copy* copy,fd_selector s){
          printf("no agrego read\n");
     }
     if((copy->interest & OP_WRITE) && buffer_can_read(copy->wb)){
-    
-        printf("buffer wb: %s\n", copy->wb->data);
+
         printf("Agrego OP_WRITE  a fd: %d\n", copy->fd);
         new_interests |= OP_WRITE;
     }else{
@@ -466,19 +466,24 @@ static unsigned copy_read(struct selector_key *key){
     uint8_t *read_buffer_ptr = buffer_write_ptr(copy->rb, &wbytes);
     printf("wbytes = %d\n", wbytes);
     ssize_t numBytesRead = recv(key->fd, read_buffer_ptr, wbytes,0);
-
+    
     unsigned ret = COPY;
 
+   
     if(numBytesRead < 0){
         ret = ERROR;
     }else if(numBytesRead == 0){
+        printf("recv devuelve 0\n");
         // si llega EOF entonces debo quitar OP_READ del copy actual y OP_WRITE del copy_to
         // la conexión no termina ya que puede quedar data en el buffer con dirección contraria
         copy->interest &= ~OP_READ;
+        shutdown(copy->fd, SHUT_RD);
         copy->copy_to->interest &= ~OP_WRITE;
+        shutdown(copy->copy_to->fd, SHUT_WR);
 
         if(copy->interest == OP_NOOP){
             // una de las partes no puede leer ni enviar más datos
+               printf("interest == NOOP\n");
             return DONE;
         }
 
@@ -509,16 +514,25 @@ static unsigned copy_write(struct selector_key *key){
    
     unsigned ret = COPY;
 
+ 
     if(numBytesWritten < 0){
         ret = ERROR;
     }else if(numBytesWritten == 0){
+        printf("send devuelve 0\n");
         // si llega EOF entonces debo quitar OP_WRITE del copy actual y OP_READ del copy_to
         // la conexión no termina ya que puede quedar data en el buffer con dirección contraria
         copy->interest &= ~OP_WRITE;
-        copy->copy_to->interest &= ~OP_READ;
+        shutdown(copy->fd, SHUT_WR);
+        if(copy->copy_to->fd != -1){
+            copy->copy_to->interest &= ~OP_READ;
+            shutdown(copy->copy_to->fd, SHUT_RD);
+        }
+      
+
 
         if(copy->interest == OP_NOOP){
             // una de las partes no puede leer ni enviar más datos
+            printf("interest == NOOP\n");
             return DONE;
         }
 
