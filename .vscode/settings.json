@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "netutils.h": "c",
+        "httpdnio.h": "c",
+        "selector.h": "c"
+    }
+}

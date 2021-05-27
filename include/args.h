@@ -5,8 +5,6 @@
 
 #define MAX_USERS 10
 
-struct httpdargs * args;
-
 struct users {
     char *name;
     char *pass;
@@ -21,7 +19,8 @@ struct doh {
 };
 
 struct httpdargs {
-    char           *httpd_addr;
+    char           *httpd_v4_addr;
+    char           *httpd_v6_addr;
     unsigned short  httpd_port;
 
     char *          mng_addr;
@@ -40,5 +39,9 @@ struct httpdargs {
  */
 void 
 parse_args(const int argc,const char **argv);
+
+char *get_ipv4_addr();
+char *get_ipv6_addr();
+unsigned short get_port();
 
 #endif

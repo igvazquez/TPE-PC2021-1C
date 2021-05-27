@@ -16,7 +16,7 @@
 #include <limits.h>
 #include <errno.h>
 #include <signal.h>
-
+#include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/types.h>   // socket
 #include <sys/socket.h>  // socket
@@ -27,8 +27,10 @@
 #include "../include/selector.h"
 #include "../include/httpdnio.h"
 #include "../include/args.h"
-
+#include "../include/netutils.h"
 #define MAX_SOCKETS 1024
+
+#define STDIN_FILENO 0
 
 #define MAX_WAITING_CONNECTIONS 20
 
@@ -45,40 +47,94 @@ main(const int argc, const char **argv) {
 
     parse_args(argc, argv);
 
+
+
+
     // no tenemos nada que leer de stdin
-    close(0);
+    close(STDIN_FILENO);
 
     const char       *err_msg = NULL;
     selector_status   ss      = SELECTOR_SUCCESS;
     fd_selector selector      = NULL;
 
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family      = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port        = htons(args->httpd_port);
+ 
 
+    //////////////////////////////////////////////// CREATE IP V4 SOCKET ////////////////////////////////////////////////
     //TODO: hacer lo mismo para IPV6 como en tcpEchoAddrInfo.c y guardar la familia del IP usado en el struct httpd
-    const int server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if(server < 0) {
-        err_msg = "unable to create socket";
-        goto finally;
+    char *ip;
+    unsigned short port = get_port();
+    int server = 0;
+
+    char buff[30];
+
+    if((ip = get_ipv4_addr()) != NULL){
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+         if(inet_pton(AF_INET,ip,&(addr.sin_addr)) < 0){
+             err_msg = "failed inet_pton trying to read IPV4";
+             goto finally;
+         }
+        addr.sin_family = AF_INET;
+        
+        addr.sin_port = htons(port);
+
+        server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if(server < 0) {
+            err_msg = "unable to create IPV4 socket";
+            goto finally;
+        }
+
+        fprintf(stdout, "Listening IPV4 on TCP port %d\n", port);
+
+        // man 7 ip. no importa reportar nada si falla.
+        setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
+        printf("binding ipv4 : %s\n", sockaddr_to_human(buff, 30, (struct sockaddr *)(&addr)));
+        if(bind(server, (struct sockaddr*) &addr, sizeof(addr)) < 0) {
+            err_msg = "unable to bind IPV4 socket";
+            goto finally;
+        }
+
+        if (listen(server, MAX_WAITING_CONNECTIONS) < 0) {
+            err_msg = "unable to listen IPV4 socket";
+            goto finally;
+        }
     }
 
-    fprintf(stdout, "Listening on TCP port %d\n", args->httpd_port);
+    if((ip = get_ipv6_addr()) != NULL){
+            struct sockaddr_in6 addr6;
+            memset(&addr6, 0, sizeof(addr6));
 
-    // man 7 ip. no importa reportar nada si falla.
-    setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
+            if(inet_pton(AF_INET6,ip,&(addr6.sin6_addr)) < 0){
+                err_msg = "failed inet_pton trying to read IPV6";
+                goto finally;
+            }
+            addr6.sin6_family = AF_INET6;
+            addr6.sin6_port        = htons(port);
 
-    if(bind(server, (struct sockaddr*) &addr, sizeof(addr)) < 0) {
-        err_msg = "unable to bind socket";
-        goto finally;
+            server = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+            if(server < 0) {
+                err_msg = "unable to create IPV6 socket";
+                goto finally;
+            }
+
+            fprintf(stdout, "Listening IPV6 on TCP port %d\n", port);
+
+            // man 7 ip. no importa reportar nada si falla.
+            setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
+
+            printf("binding ipv6 : %s\n", sockaddr_to_human(buff, 30, (struct sockaddr *)(&addr6)));
+            if(bind(server, (struct sockaddr*) &addr6, sizeof(addr6)) < 0) {
+                err_msg = "unable to bind IPV6 socket";
+                goto finally;
+            }
+
+            if (listen(server, MAX_WAITING_CONNECTIONS) < 0) {
+                err_msg = "unable to listen IPV4 socket";
+                goto finally;
+            }
     }
 
-    if (listen(server, MAX_WAITING_CONNECTIONS) < 0) {
-        err_msg = "unable to listen";
-        goto finally;
-    }
+   
 
     // registrar sigterm es util para terminar el programa normalmente.
     // esto ayuda mucho en herramientas como valgrind.
@@ -155,3 +211,4 @@ finally:
     }
     return ret;
 }
+
