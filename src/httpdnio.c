@@ -17,7 +17,7 @@
 #include <netinet/in.h>
 
 /**  tamaño del buffer de read y write **/
-#define MAX_BUFF_SIZE 1024
+#define MAX_BUFF_SIZE 4*1024
 
 #define N(x) (sizeof(x)/sizeof((x)[0]))
 

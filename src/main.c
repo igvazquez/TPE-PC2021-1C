@@ -32,8 +32,6 @@
 
 #define MAX_WAITING_CONNECTIONS 20
 
-#define DEFAULT_PORT 9999
-
 static bool done = false;
 
 static void
@@ -44,9 +42,7 @@ sigterm_handler(const int signal) {
 
 int
 main(const int argc, const char **argv) {
-    unsigned port = DEFAULT_PORT;
 
- 
     parse_args(argc, argv);
 
     // no tenemos nada que leer de stdin
@@ -60,7 +56,7 @@ main(const int argc, const char **argv) {
     memset(&addr, 0, sizeof(addr));
     addr.sin_family      = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port        = htons(port);
+    addr.sin_port        = htons(args->httpd_port);
 
     //TODO: hacer lo mismo para IPV6 como en tcpEchoAddrInfo.c y guardar la familia del IP usado en el struct httpd
     const int server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -69,7 +65,7 @@ main(const int argc, const char **argv) {
         goto finally;
     }
 
-    fprintf(stdout, "Listening on TCP port %d\n", port);
+    fprintf(stdout, "Listening on TCP port %d\n", args->httpd_port);
 
     // man 7 ip. no importa reportar nada si falla.
     setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));

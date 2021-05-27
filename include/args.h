@@ -5,6 +5,8 @@
 
 #define MAX_USERS 10
 
+struct httpdargs * args;
+
 struct users {
     char *name;
     char *pass;
