@@ -26,6 +26,7 @@
 #include "../include/httpdnio.h"
 #include "../include/selector.h"
 #include "../include/httpdnio.h"
+#include "../include/args.h"
 
 #define MAX_SOCKETS 1024
 
@@ -45,23 +46,8 @@ int
 main(const int argc, const char **argv) {
     unsigned port = DEFAULT_PORT;
 
-    if(argc == 1) {
-        // utilizamos el default
-    } else if(argc == 2) {
-        char *end     = 0;
-        const long sl = strtol(argv[1], &end, 10);
-
-        if (end == argv[1]|| '\0' != *end 
-           || ((LONG_MIN == sl || LONG_MAX == sl) && ERANGE == errno)
-           || sl < 0 || sl > USHRT_MAX) {
-            fprintf(stderr, "port should be an integer: %s\n", argv[1]);
-            return 1;
-        }
-        port = sl;
-    } else {
-        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
-        return 1;
-    }
+ 
+    parse_args(argc, argv);
 
     // no tenemos nada que leer de stdin
     close(0);
