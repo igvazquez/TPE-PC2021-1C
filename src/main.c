@@ -10,6 +10,8 @@
  * DNS utilizando getaddrinfo), pero toda esa complejidad estÃ¡ oculta en
  * el selector.
  */
+#include <fcntl.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -28,6 +30,10 @@
 #include "../include/httpdnio.h"
 #include "../include/args.h"
 #include "../include/netutils.h"
+#include "../include/parser_utils.h"
+#include "../include/pop3_multi.h"
+#include "../include/mime_chars.h"
+#include "../include/mime_msg.h"
 #define MAX_SOCKETS 1024
 
 #define STDIN_FILENO 0
@@ -46,7 +52,6 @@ int
 main(const int argc, const char **argv) {
 
     parse_args(argc, argv);
-
 
 
 
