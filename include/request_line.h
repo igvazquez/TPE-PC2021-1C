@@ -66,6 +66,8 @@ struct request_line {
      * GET | POST | …
      */
     uint8_t method[MAX_METHOD_LENGTH + 1];
+    
+   
 
     struct {
         // el tipo de request_target.
@@ -80,7 +82,8 @@ struct request_line {
             ipv4_addr_t,
             ipv6_addr_t,
         } host_type;
-
+        
+         char user_info[MAX_FQDN_LENGTH + 1]; 
         // host y port aplican a todos
 
         /** el host al cual hay que conectarse puede estar escrito de tres formas */
@@ -146,8 +149,8 @@ struct parsed_info{
     char method_buffer[MAX_METHOD_LENGTH +1];
     unsigned method_counter;
    // enum method_type method_type;
-    bool hasUserinfo;
-    char userinfo[MAX_FQDN_LENGTH + 1]; // nose cual es la max length de userinfo no dice nada el RFC
+    bool has_user_info;
+    char user_info[MAX_FQDN_LENGTH + 1]; // nose cual es la max length de userinfo no dice nada el RFC
     //HOST
     enum parsed_info_addr_type {
             domain_or_ipv4_addr,

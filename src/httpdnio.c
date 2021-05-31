@@ -329,7 +329,7 @@ static void request_line_init(const unsigned state,struct selector_key *key){
     struct httpd *data = ATTACHMENT(key);
     struct request_line_st* rl = &(data->client.request_line);
     request_line_parser_init(&(rl->parser));
-    rl->parser.request_line = &data->client.request_line.request_line_data;
+    rl->parser.request_line = &(data->client.request_line.request_line_data);
     rl->rb = &(data->from_origin_buffer);
 }
 static unsigned request_line_read(struct selector_key *key){
@@ -368,7 +368,7 @@ static unsigned request_line_read(struct selector_key *key){
                 }
                 printf("puerto: %d\n", ntohs(rl->request_line_data.request_target.port));
                 printf("version %d.%d\n", rl->parser.parsed_info.version_major, rl->parser.parsed_info.version_minor);
-                printf("1 origin form: %s\n", rl->request_line_data.request_target.origin_form);
+                printf("user info: %s\n", rl->request_line_data.request_target.user_info);
                 printf("2 origin form: %s\n", rl->parser.parsed_info.origin_form_buffer);
                 request_line_parser_reset(&rl->parser);
             }

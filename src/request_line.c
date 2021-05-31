@@ -40,9 +40,11 @@ enum state
     IPV60,
     IPV6,
     IPV6_END,
-    PATH_SLASH,
-    PATH_SEGMENT,
+    PATH0,
+    PATH,
+    QUERY0,
     QUERY,
+    FRAGMENT0,
     FRAGMENT,
     HTTP_VERSION_NAME0,
     HTTP_VERSION_NAME1,
@@ -251,9 +253,9 @@ static const struct parser_state_transition ST_MAYBE_USER[] =  {
     {.when = TOKEN_SUB_DELIMS,        .dest = MAYBE_USER,         .act1 = host,},
     {.when = '@',        .dest = HOST0,         .act1 = userinfo_end,},
     {.when = ':',        .dest = PORT0,         .act1 = host_end}, // Esto era dest: MAYBE_PORT, estoy diciendo que solo acepto userinfo y no acepto :password o : con password vacía
-    {.when = '/',        .dest = PATH_SLASH,         .act1 = host_end,.act2 = origin_form},
-    {.when = '?',        .dest = QUERY,         .act1 = host_end,.act2 = origin_form},
-    {.when = '#',        .dest = FRAGMENT,         .act1 = host_end,.act2 = origin_form},
+    {.when = '/',        .dest = PATH0,         .act1 = host_end,.act2 = origin_form},
+    {.when = '?',        .dest = QUERY0,         .act1 = host_end,.act2 = origin_form},
+    {.when = '#',        .dest = FRAGMENT0,         .act1 = host_end,.act2 = origin_form},
     {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = host_end,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
@@ -273,9 +275,9 @@ static const struct parser_state_transition ST_PORT0[] =  {
 
 static const struct parser_state_transition ST_PORT[] =  {
     {.when = TOKEN_DIGIT,        .dest = PORT,         .act1 = port,},
-    {.when = '/',        .dest = PATH_SLASH,         .act1 = host_end,.act2 = origin_form},
-    {.when = '?',        .dest = QUERY,         .act1 = host_end,.act2 = origin_form},
-    {.when = '#',        .dest = FRAGMENT,         .act1 = host_end,.act2 = origin_form},
+    {.when = '/',        .dest = PATH0,         .act1 = host_end,.act2 = origin_form},
+    {.when = '?',        .dest = QUERY0,         .act1 = host_end,.act2 = origin_form},
+    {.when = '#',        .dest = FRAGMENT0,         .act1 = host_end,.act2 = origin_form},
     {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = host_end,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
@@ -291,9 +293,9 @@ static const struct parser_state_transition ST_FQDN_OR_IPV4[] =  {
     {.when = TOKEN_UNRESERVED,        .dest = FQDN_OR_IPV4,         .act1 = host,},
     {.when = TOKEN_SUB_DELIMS,        .dest = FQDN_OR_IPV4,         .act1 = host,},
     {.when = ':',        .dest = PORT,         .act1 = wait,},
-    {.when = '/',        .dest = PATH_SLASH,         .act1 = host_end,.act2 = origin_form},
-    {.when = '?',        .dest = QUERY,         .act1 = host_end,.act2 = origin_form},
-    {.when = '#',        .dest = FRAGMENT,         .act1 = host_end,.act2 = origin_form},
+    {.when = '/',        .dest = PATH0,         .act1 = host_end,.act2 = origin_form},
+    {.when = '?',        .dest = QUERY0,         .act1 = host_end,.act2 = origin_form},
+    {.when = '#',        .dest = FRAGMENT0,         .act1 = host_end,.act2 = origin_form},
     {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = host_end,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
@@ -313,52 +315,71 @@ static const struct parser_state_transition ST_IPV6[] =  {
 
 static const struct parser_state_transition ST_IPV6_END[] =  {
     {.when = ':',        .dest = PORT0,         .act1 = wait,},
-    {.when = '/',        .dest = PATH_SLASH,         .act1 = host_end,.act2 = origin_form},
-    {.when = '?',        .dest = QUERY,         .act1 = host_end,.act2 = origin_form},
-    {.when = '#',        .dest = FRAGMENT,         .act1 = host_end,.act2 = origin_form},
+    {.when = '/',        .dest = PATH0,         .act1 = host_end,.act2 = origin_form},
+    {.when = '?',        .dest = QUERY0,         .act1 = host_end,.act2 = origin_form},
+    {.when = '#',        .dest = FRAGMENT0,         .act1 = host_end,.act2 = origin_form},
     {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = host_end,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
-static const struct parser_state_transition ST_PATH_SLASH[] =  {
+static const struct parser_state_transition ST_PATH0[] =  {
     {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = origin_form_end,},
-    {.when = TOKEN_UNRESERVED,        .dest = PATH_SEGMENT,         .act1 = origin_form,},
-    {.when = TOKEN_SUB_DELIMS,        .dest = PATH_SEGMENT,         .act1 = origin_form,},
-    {.when = '@',        .dest = PATH_SEGMENT,         .act1 = origin_form,},
-    {.when = ':',        .dest = PATH_SEGMENT,         .act1 = origin_form,},
+    {.when = TOKEN_UNRESERVED,        .dest = PATH,         .act1 = origin_form,},
+    {.when = TOKEN_SUB_DELIMS,        .dest = PATH,         .act1 = origin_form,},
+    {.when = '@',        .dest = PATH,         .act1 = origin_form,},
+    {.when = ':',        .dest = PATH,         .act1 = origin_form,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
-static const struct parser_state_transition ST_PATH_SEGMENT[] =  {
+static const struct parser_state_transition ST_PATH[] =  {
     {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = origin_form_end,},
-    {.when = '/',        .dest = PATH_SLASH,         .act1 = origin_form,},
-    {.when = TOKEN_UNRESERVED,        .dest = PATH_SEGMENT,         .act1 = origin_form,},
-    {.when = TOKEN_SUB_DELIMS,        .dest = PATH_SEGMENT,         .act1 = origin_form,},
-    {.when = '@',        .dest = PATH_SEGMENT,         .act1 = origin_form,},
-    {.when = ':',        .dest = PATH_SEGMENT,         .act1 = origin_form,},
+    {.when = '/',        .dest = PATH0,         .act1 = origin_form,},
+    {.when = TOKEN_UNRESERVED,        .dest = PATH,         .act1 = origin_form,},
+    {.when = TOKEN_SUB_DELIMS,        .dest = PATH,         .act1 = origin_form,},
+    {.when = '@',        .dest = PATH,         .act1 = origin_form,},
+    {.when = ':',        .dest = PATH,         .act1 = origin_form,},
+    {.when = '?',        .dest = QUERY0,         .act1 = origin_form,},
+    {.when = '#',        .dest = FRAGMENT0,         .act1 = origin_form,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
+
+static const struct parser_state_transition ST_QUERY0[] =  {
+    {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = origin_form_end,},
+    {.when = TOKEN_UNRESERVED,        .dest = QUERY,         .act1 = origin_form,},
+    {.when = TOKEN_SUB_DELIMS,        .dest = QUERY,         .act1 = origin_form,},
+    {.when = '/',        .dest = QUERY,         .act1 = origin_form,},
+    {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
+};
 
 static const struct parser_state_transition ST_QUERY[] =  {
     {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = origin_form_end,},
-    {.when = '#',        .dest = FRAGMENT,         .act1 = origin_form,},
+    {.when = '#',        .dest = FRAGMENT0,         .act1 = origin_form,},
     {.when = TOKEN_UNRESERVED,        .dest = QUERY,         .act1 = origin_form,},
     {.when = TOKEN_SUB_DELIMS,        .dest = QUERY,         .act1 = origin_form,},
-    {.when = '?',        .dest = QUERY,         .act1 = origin_form,},
     {.when = '/',        .dest = QUERY,         .act1 = origin_form,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
+
+
+static const struct parser_state_transition ST_FRAGMENT0[] =  {
+    {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = origin_form_end,},
+    {.when = TOKEN_UNRESERVED,        .dest = FRAGMENT,         .act1 = origin_form,},
+    {.when = TOKEN_SUB_DELIMS,        .dest = FRAGMENT,         .act1 = origin_form,},
+    {.when = '?',        .dest = FRAGMENT,         .act1 = origin_form,},
+    {.when = '/',        .dest = FRAGMENT,         .act1 = origin_form,},
+    {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
+};
+
 
 static const struct parser_state_transition ST_FRAGMENT[] =  {
     {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = origin_form_end,},
-    {.when = TOKEN_UNRESERVED,        .dest = QUERY,         .act1 = origin_form,},
-    {.when = TOKEN_SUB_DELIMS,        .dest = QUERY,         .act1 = origin_form,},
-    {.when = '?',        .dest = QUERY,         .act1 = origin_form,},
-    {.when = '/',        .dest = QUERY,         .act1 = origin_form,},
+    {.when = TOKEN_UNRESERVED,        .dest = FRAGMENT,         .act1 = origin_form,},
+    {.when = TOKEN_SUB_DELIMS,        .dest = FRAGMENT,         .act1 = origin_form,},
+    {.when = '?',        .dest = FRAGMENT,         .act1 = origin_form,},
+    {.when = '/',        .dest = FRAGMENT,         .act1 = origin_form,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
-
 
 static const struct parser_state_transition ST_HTTP_VERSION_NAME0[] =  {
     {.when = 'H',        .dest = HTTP_VERSION_NAME1,         .act1 = http_name,},
@@ -434,9 +455,11 @@ static const struct parser_state_transition *states[] =
     ST_IPV60,
     ST_IPV6,
     ST_IPV6_END,
-    ST_PATH_SLASH,
-    ST_PATH_SEGMENT,
+    ST_PATH0,
+    ST_PATH,
+    ST_QUERY0,
     ST_QUERY,
+    ST_FRAGMENT0,
     ST_FRAGMENT,
     ST_HTTP_VERSION_NAME0,
     ST_HTTP_VERSION_NAME1,
@@ -473,9 +496,11 @@ static const size_t states_n [] = {
     N(ST_IPV60),
     N(ST_IPV6),
     N(ST_IPV6_END),
-    N(ST_PATH_SLASH),
-    N(ST_PATH_SEGMENT),
+    N(ST_PATH0),
+    N(ST_PATH),
+    N(ST_QUERY0),
     N(ST_QUERY),
+    N(ST_FRAGMENT0),
     N(ST_FRAGMENT),
     N(ST_HTTP_VERSION_NAME0),
     N(ST_HTTP_VERSION_NAME1),
@@ -514,7 +539,7 @@ void request_line_parser_init(struct request_line_parser *parser)
    parser->parsed_info.host_counter = 0;
    parser->parsed_info.origin_form_counter = 0;
    parser->parsed_info.host_type = domain_or_ipv4_addr; // DEFAULT
-   parser->parsed_info.hasUserinfo = false;
+   parser->parsed_info.has_user_info = false;
 
    parser->rl_parser = parser_init(init_char_class(), request_line_parser_definition());
    if (parser->rl_parser == NULL)
@@ -592,8 +617,9 @@ static bool process_event(const struct parser_event * e,request_line_parser *par
         parsed_info->version_minor = e->data[0] - '0';  
         break;
     case RL_USERINFO_END:
-        memcpy(parsed_info->userinfo, parsed_info->host.domain_or_ipv4_buffer, parsed_info->host_counter+1);
-        parsed_info->hasUserinfo = true;
+        memcpy(parsed_info->user_info, parsed_info->host.domain_or_ipv4_buffer, parsed_info->host_counter+1);
+        parsed_info->has_user_info = true;
+        parsed_info->host_counter = 0;
         break;
     case RL_WAIT:
         // nada
@@ -606,7 +632,7 @@ static bool process_event(const struct parser_event * e,request_line_parser *par
 
 
 static void fill_request_line_data(struct request_line_parser * parser,bool *error){
-    printf("fill request line data\n");
+    printf("\nfill request line data\n");
     struct request_line *rl = parser->request_line;
     struct parsed_info pi = parser->parsed_info;
     int i6pton_ret, i4pton_ret;
@@ -636,7 +662,7 @@ static void fill_request_line_data(struct request_line_parser * parser,bool *err
                  rl->request_target.host_type = domain_addr_t;
                  memcpy(rl->request_target.host.domain, pi.host.domain_or_ipv4_buffer, pi.host_counter+1);
                  //TODO: probablemente el bool * error en todas estas funciones deba cambiar por una enum para luego devolver una respuesta de error custom
-                 goto finally;
+              
             }else{
                 // inet_pton falló
                  *error = true;
@@ -650,13 +676,15 @@ static void fill_request_line_data(struct request_line_parser * parser,bool *err
     }
     
     memcpy(rl->request_target.origin_form, pi.origin_form_buffer, pi.origin_form_counter+1);
-
-
+    if(pi.has_user_info){
+        memcpy(rl->request_target.user_info, pi.user_info, strlen(pi.user_info)+1);
+    }
+  
     if(pi.port != 0){
-         printf("Pongo el puerto %d\n",pi.port);
+       
         rl->request_target.port = htons(pi.port);
     }else{
-        printf("Pongo el puerto 80\n");
+       
         rl->request_target.port = htons(DEFAULT_HTTP_PORT);
     }
 
@@ -725,7 +753,7 @@ void request_line_parser_reset(struct request_line_parser *parser){
    parser->parsed_info.host_counter = 0;
    parser->parsed_info.origin_form_counter = 0;
    parser->parsed_info.host_type = domain_or_ipv4_addr; // DEFAULT
-   parser->parsed_info.hasUserinfo = false;
+   parser->parsed_info.has_user_info = false;
    parser_reset(parser->rl_parser);
 }
 
