@@ -231,10 +231,12 @@ items_update_fdset_for_fd(fd_selector s, const struct item * item) {
   
     if(ITEM_USED(item)) {
         if(item->interest & OP_READ) {
+             printf("seteo fd %d a OP_READ\n", item->fd);
             FD_SET(item->fd, &(s->master_r));
         }
     
         if(item->interest & OP_WRITE) {
+            printf("seteo fd %d a OP_WRITE\n", item->fd);
             FD_SET(item->fd, &(s->master_w));
         }
         
@@ -376,6 +378,7 @@ selector_register(fd_selector        s,
         if(fd > s->max_fd) {
             
             s->max_fd = fd;
+            printf("actualizo max: %d\n", s->max_fd);
         }
     
         items_update_fdset_for_fd(s, item);
@@ -503,6 +506,9 @@ handle_iteration(fd_selector s) {
     }
    
 }
+
+
+
 
 static void
 handle_block_notifications(fd_selector s) {

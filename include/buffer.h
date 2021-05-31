@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 /**
- * buffer.c - buffer con acceso directo (útil para I/O) que mantiene
+ * buffer.c - buffer con acceso directo (útil para I/O) que
  *            mantiene puntero de lectura y de escritura.
  *
  *
