@@ -12,10 +12,12 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <sys/signal.h>
 #include <signal.h>
+
 #include "../include/selector.h"
 
 #define N(x) (sizeof(x)/sizeof((x)[0]))
@@ -223,17 +225,19 @@ items_max_fd(fd_selector s) {
 
 static void
 items_update_fdset_for_fd(fd_selector s, const struct item * item) {
-    FD_CLR(item->fd, &s->master_r);
-    FD_CLR(item->fd, &s->master_w);
 
+    FD_CLR(item->fd, &(s->master_r));
+    FD_CLR(item->fd, &(s->master_w));
+  
     if(ITEM_USED(item)) {
         if(item->interest & OP_READ) {
             FD_SET(item->fd, &(s->master_r));
         }
-
+    
         if(item->interest & OP_WRITE) {
             FD_SET(item->fd, &(s->master_w));
         }
+        
     }
 }
 
@@ -248,15 +252,18 @@ ensure_capacity(fd_selector s, const size_t n) {
 
     const size_t element_size = sizeof(*s->fds);
     if(n < s->fd_size) {
+        printf("ensure capacity %d < fd_size",n);
         // nada para hacer, entra...
         ret = SELECTOR_SUCCESS;
     } else if(n > ITEMS_MAX_SIZE) {
+
         // me estás pidiendo más de lo que se puede.
         ret = SELECTOR_MAXFD;
     } else if(NULL == s->fds) {
+          printf("s->fds == null\n");
         // primera vez.. alocamos
         const size_t new_size = next_capacity(n);
-
+        printf("new_size = %d\n", new_size);
         s->fds = calloc(new_size, element_size);
         if(NULL == s->fds) {
             ret = SELECTOR_ENOMEM;
@@ -266,6 +273,7 @@ ensure_capacity(fd_selector s, const size_t n) {
         }
     } else {
         // hay que agrandar...
+        printf("hay que agrandar\n");
         const size_t new_size = next_capacity(n);
         if (new_size > SIZE_MAX/element_size) { // ver MEM07-C
             ret = SELECTOR_ENOMEM;
@@ -344,28 +352,32 @@ selector_register(fd_selector        s,
     }
     // 1. tenemos espacio?
     size_t ufd = (size_t)fd;
+   
     if(ufd > s->fd_size) {
         ret = ensure_capacity(s, ufd);
         if(SELECTOR_SUCCESS != ret) {
             goto finally;
         }
     }
-
+   
     // 2. registración
     struct item * item = s->fds + ufd;
     if(ITEM_USED(item)) {
         ret = SELECTOR_FDINUSE;
         goto finally;
     } else {
+        
         item->fd       = fd;
         item->handler  = handler;
         item->interest = interest;
         item->data     = data;
-
+        
         // actualizo colaterales
         if(fd > s->max_fd) {
+            
             s->max_fd = fd;
         }
+    
         items_update_fdset_for_fd(s, item);
     }
 
@@ -451,23 +463,33 @@ handle_iteration(fd_selector s) {
     struct selector_key key = {
         .s = s,
     };
-
+    fd_selector aux;
     for (int i = 0; i <= n; i++) {
+
         struct item *item = s->fds + i;
         if(ITEM_USED(item)) {
+          
             key.fd   = item->fd;
             key.data = item->data;
-            if(FD_ISSET(item->fd, &s->slave_r)) {
-                printf("quiero leer: %d\n",item->fd);
+            if(FD_ISSET(item->fd, &(s->slave_r))) {
+             
                 if(OP_READ & item->interest) {
                     if(0 == item->handler->handle_read) {
                         assert(("OP_READ arrived but no handler. bug!" == 0));
                     } else {
+                        aux = s;
+                       
                         item->handler->handle_read(&key);
+                       
                     }
                 }
             }
-            if(FD_ISSET(i, &s->slave_w)) {
+            //printf("slave_w dir: %p\n",&s->slave_w);
+          
+   
+            if (FD_ISSET(i, &(aux->slave_w)))
+            {
+           
                 if(OP_WRITE & item->interest) {
                     // printf("quiero escribir: %d\n",item->fd);
                     if(0 == item->handler->handle_write) {
@@ -479,10 +501,12 @@ handle_iteration(fd_selector s) {
             }
         }
     }
+   
 }
 
 static void
 handle_block_notifications(fd_selector s) {
+     
     struct selector_key key = {
         .s = s,
     };
@@ -502,6 +526,7 @@ handle_block_notifications(fd_selector s) {
     }
     s->resolution_jobs = 0;
     pthread_mutex_unlock(&s->resolution_mutex);
+   
 }
 
 
@@ -569,6 +594,7 @@ selector_select(fd_selector s) {
         }
     } else {
         handle_iteration(s);
+        printf("termin handle iteration\n");
     }
     if(ret == SELECTOR_SUCCESS) {
         handle_block_notifications(s);

@@ -47,8 +47,8 @@ static unsigned copy_write(struct selector_key *key);
 
 /** maquina de estados general */
 enum httpd_state {
-    CONNECTING,
     REQUEST_LINE_READ,
+    CONNECTING,
     COPY,
     // estados terminales
     DONE,
@@ -130,15 +130,16 @@ struct httpd {
 
 /** Definición de handlers para cada estado */
 static const struct state_definition client_statbl[] = {
-    {
-        .state = CONNECTING,
-        .on_arrival = connecting_init,
-        .on_write_ready = connecting_done
-     },
+
      {
          .state = REQUEST_LINE_READ,
          .on_arrival= request_line_init,
          .on_read_ready = request_line_read
+     },
+    {
+        .state = CONNECTING,
+        .on_arrival = connecting_init,
+        .on_write_ready = connecting_done
      },
     {
         .state = COPY,
@@ -172,7 +173,7 @@ static void
 httpd_read(struct selector_key *key) {
     struct state_machine *stm   = &(ATTACHMENT(key)->stm);
     const enum httpd_state st = stm_handler_read(stm, key);
-
+    printf("handle read\n");
     if(ERROR == st || DONE == st) {
         httpd_done(key);
     }
@@ -231,7 +232,7 @@ static struct httpd *httpd_new(int client_fd){
     }
     memset(ret, 0x00, sizeof(*ret));
     ret->stm.states = client_statbl;
-    ret->stm.initial = CONNECTING;
+    ret->stm.initial = REQUEST_LINE_READ;
     ret->stm.max_state = ERROR;
     stm_init(&(ret->stm));
 
@@ -243,7 +244,7 @@ static struct httpd *httpd_new(int client_fd){
     return ret;
 }
 
-static void connect_to_origin(fd_selector s, struct httpd *data);
+static unsigned connect_to_origin(int origin_family,const struct sockaddr* addr, struct selector_key*key);
 
 /** Intenta aceptar la nueva conexión entrante*/
 
@@ -254,35 +255,35 @@ httpd_passive_accept(struct selector_key *key) {
     socklen_t                     client_addr_len = sizeof(client_addr);
     struct httpd                *state           = NULL;
     printf("Aceptando conexión en socket %d\n",key->fd);
-    const int client = accept(key->fd, (struct sockaddr*) &client_addr,
-                                                          &client_addr_len);
-
+    const int client = accept(key->fd, (struct sockaddr*) &client_addr, &client_addr_len);
+    // printf("1 direccion s: %p\n", key->s);
 
     if(client == -1) {
         goto fail;
     }
   
-    char buff2[30];
-    sockaddr_to_human(buff2, 50, (struct sockaddr *)&client_addr);
+   // char buff2[30];
+   // sockaddr_to_human(buff2, 50, (struct sockaddr *)&client_addr);
     //esto esta mal
-    printf("Conexión entrante de %s\n", buff2);
+   // printf("Conexión entrante de %s\n", buff2);
     if(selector_fd_set_nio(client) == -1) {
         goto fail;
-    }
+     }
     state = httpd_new(client);
-    printf("State creado\n");
-    
+   // printf("State creado\n");
+     //   printf("2 direccion s: %p\n", key->s);
     if(state == NULL) {
         // sin un estado, nos es imposible manejaro.
         // tal vez deberiamos apagar accept() hasta que detectemos
         // que se liberÃ³ alguna conexiÃ³n.
         goto fail;
     }
+
     memcpy(&state->client_addr, &client_addr, client_addr_len);
     state->client_addr_len = client_addr_len;
 
     //TODO para proxy TCP llenar state->origin_addr con una IP harcodeada
-
+/*
     struct sockaddr_storage origin_addr;
     state->origin_addr_len = sizeof(origin_addr);
     memset(&origin_addr, 0, sizeof(origin_addr));
@@ -292,24 +293,24 @@ httpd_passive_accept(struct selector_key *key) {
     if(inet_pton(AF_INET,"127.0.0.1",&(tmp->sin_addr)) <= 0){
         goto fail;
     }
-
-    memcpy(&state->origin_addr, &origin_addr, sizeof(origin_addr));
+*/
+  // memcpy(&state->origin_addr, &origin_addr, sizeof(origin_addr));
     // no quiero leer desde el cliente hasta que me conecte con el origen
-    if(SELECTOR_SUCCESS != selector_register(key->s, client, &httpd_handler,
-                                              OP_NOOP, state)) {
+   if(SELECTOR_SUCCESS != selector_register(key->s, client, &httpd_handler,
+                                              OP_READ, state)) {
         goto fail;
     }
-    char buff1[30];
+
+  //  printf("fin handler read direccion s: %p\n", key->s);
+   /* char buff1[30];
     sockaddr_to_human(buff1, 50, (struct sockaddr *)&origin_addr);
     //esto esta mal
-    printf("Conexión origin de %s\n", buff1);
+    printf("Conexión origin de %s\n", buff1);*/
 
-    connect_to_origin(key->s,state);
+    //connect_to_origin(key->s,state);
 
-
-    return ;
-    
-
+   // printf("pasive accept termina\n");
+    return;
 
 fail:
     printf("fail:\n");
@@ -325,6 +326,7 @@ fail:
 ////////////////////////////////////////////////////////////////////////////////
 
 static void request_line_init(const unsigned state,struct selector_key *key){
+    printf("request_line_init\n");
     assert(state == REQUEST_LINE_READ);
     struct httpd *data = ATTACHMENT(key);
     struct request_line_st* rl = &(data->client.request_line);
@@ -332,8 +334,11 @@ static void request_line_init(const unsigned state,struct selector_key *key){
     rl->parser.request_line = &(data->client.request_line.request_line_data);
     rl->rb = &(data->from_origin_buffer);
 }
-static unsigned request_line_read(struct selector_key *key){
 
+static unsigned request_line_process(struct request_line *rl, struct selector_key *key);
+static unsigned request_line_read(struct selector_key *key)
+{
+     printf("request_line_read\n");
     struct request_line_st* rl = &(ATTACHMENT(key)->client.request_line);
 
     buffer *b = rl->rb;
@@ -371,6 +376,9 @@ static unsigned request_line_read(struct selector_key *key){
                 printf("user info: %s\n", rl->request_line_data.request_target.user_info);
                 printf("2 origin form: %s\n", rl->parser.parsed_info.origin_form_buffer);
                 request_line_parser_reset(&rl->parser);
+
+                //proceso la request line
+                ret = request_line_process(&rl->request_line_data,key);
             }
             //termine de consumir request line;
             
@@ -384,18 +392,40 @@ static unsigned request_line_read(struct selector_key *key){
     return error ? ERROR : ret;
 }
 
+static unsigned request_line_process(struct request_line * rl,struct selector_key * key){
+    unsigned ret = COPY;
+    switch (rl->request_target.host_type)
+    {
+    case ipv6_addr_t:
+        ret = connect_to_origin(AF_INET6, (const struct sockaddr *)&(rl->request_target.host.ipv6), key);
+        break;
+    case ipv4_addr_t:
+        ret = connect_to_origin(AF_INET, (const struct sockaddr *)&(rl->request_target.host.ipv4), key);
+        break;
+
+    case domain_addr_t:
+        ret = ERROR;
+        break;
+    }
+    return ret;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // CONNECTING
 ////////////////////////////////////////////////////////////////////////////////
 
-static void connect_to_origin(fd_selector s,struct httpd *data){
-    bool error = false;
+static unsigned connect_to_origin(int origin_family,const struct sockaddr* addr, struct selector_key*key){
+    
+    struct httpd *data = ATTACHMENT(key);
+    struct request_line rl = data->client.request_line.request_line_data;
 
-    int origin_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-     if(origin_fd < 0) {
-         error = true;
-         goto finally;
+    bool error = false;
+    unsigned ret = CONNECTING;
+    int origin_fd = socket(origin_family, SOCK_STREAM, IPPROTO_TCP);
+    if (origin_fd < 0)
+    {
+        error = true;
+        goto finally;
     }
     printf("Origin fd: %d\n",origin_fd);
     data->origin_fd = origin_fd;
@@ -404,12 +434,12 @@ static void connect_to_origin(fd_selector s,struct httpd *data){
         error = true;
         goto finally;
     }
-    if(connect(origin_fd,(const struct sockaddr*)&data->origin_addr,data->origin_addr_len) == -1){
+    if(connect(origin_fd,addr,sizeof(*addr)) == -1){
         if(errno == EINPROGRESS){
             // se esta conectando
             printf("Connect to origin EINPROGRESS origin_fd %d\n",origin_fd);
             // registro el origin_fd para escritura para que me avise cuando si conectó o falló conexión
-            selector_status ss = selector_register(s, origin_fd, &httpd_handler, OP_WRITE, data);
+            selector_status ss = selector_register(key->s, origin_fd, &httpd_handler, OP_WRITE, data);
 
             if(ss != SELECTOR_SUCCESS){
                 printf("fail register origin_fd to OP_WRITE\n");
@@ -427,13 +457,8 @@ static void connect_to_origin(fd_selector s,struct httpd *data){
         printf("Connect to origin devuelve otra cosa: %d\n");
     }
 finally:
-    if(error){
-        printf("aborto connect to origin\n");
-        abort();
-    }
+    return error ? ERROR : ret;
 }
-
-
 
 static void connecting_init(const unsigned state,struct selector_key *key){
     assert(state == CONNECTING);

@@ -27,7 +27,6 @@
 
 #include "../include/httpdnio.h"
 #include "../include/selector.h"
-#include "../include/httpdnio.h"
 #include "../include/args.h"
 #include "../include/netutils.h"
 #include "../include/parser_utils.h"
@@ -154,7 +153,6 @@ main(const int argc, const char **argv) {
     }
 
    
-
  
     
     const struct selector_init conf = {
@@ -180,13 +178,14 @@ main(const int argc, const char **argv) {
         .handle_write      = NULL,
         .handle_close      = NULL, // nada que liberar
     };
+    printf("register serverv4 %d\n", serverV4);
     ss = selector_register(selector, serverV4, &httpd,
                                               OP_READ, NULL);
     if(ss != SELECTOR_SUCCESS) {
         err_msg = "registering fd IPV4";
         goto finally;
     }
-
+      printf("register serverv6 %d\n", serverV6);
     ss = selector_register(selector, serverV6, &httpd,
                                               OP_READ, NULL);
     if(ss != SELECTOR_SUCCESS) {
