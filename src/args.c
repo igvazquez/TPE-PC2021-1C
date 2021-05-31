@@ -80,7 +80,7 @@ parse_args(const int argc,const char **argv) {
     }
     memset(args, 0, sizeof(*args)); // sobre todo para setear en null los punteros de users
 
-    args->httpd_v4_addr = "0.0.0.0";
+    args->httpd_v4_addr = "127.0.0.1";
     args->httpd_v6_addr = "::1";
     args->httpd_port = 1080;
 
@@ -133,14 +133,15 @@ parse_args(const int argc,const char **argv) {
                     if((i6pton_ret=inet_pton(AF_INET6,optarg,&(aux_ipv6_addr.sin6_addr))) == 1){
                         // La ip ingresada es ipv6
                         args->httpd_v4_addr = NULL;
-                    }else if(i4pton_ret < 0){
-                        // ERROR IPV4
-                         fprintf(stderr, "failed inet_pton trying to read IPV4 with errno: %d\n",errno);
-                         exit(1);
+                    }else if(i6pton_ret < 0){
+                            // ERROR IPV6
+                            fprintf(stderr, "failed inet_pton trying to read IPV6 with errno: %d\n",errno);
+                            exit(1);
+                    
                     }
                 }else{
-                    // ERROR IPV6
-                    fprintf(stderr, "failed inet_pton trying to read IPV6 with errno: %d\n",errno);
+                    // ERROR IPV4
+                    fprintf(stderr, "failed inet_pton trying to read IPV4 with errno: %d\n",errno);
                     exit(1);
                 }
               

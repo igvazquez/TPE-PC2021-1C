@@ -94,6 +94,9 @@ enum mime_char_class
     TOKEN_REST_NAME_CHARS = 1 << 24,
     TOKEN_TSPECIAL = 1 << 25,
     TOKEN_HEXA = 1 << 26,
+    TOKEN_UNRESERVED = 1 << 27,
+    TOKEN_SUB_DELIMS = 1 << 28,
+  
 };
 
 /**

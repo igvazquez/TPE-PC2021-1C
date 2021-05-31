@@ -21,6 +21,10 @@ struct parser {
     struct parser_event e2;
 };
 
+void parser_set_state(struct parser *p, unsigned state){
+    p->state = state;
+}
+
 void
 parser_destroy(struct parser *p) {
     if(p != NULL) {

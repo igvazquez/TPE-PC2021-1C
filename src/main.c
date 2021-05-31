@@ -62,14 +62,18 @@ main(const int argc, const char **argv) {
     selector_status   ss      = SELECTOR_SUCCESS;
     fd_selector selector      = NULL;
 
- 
+    // registrar sigterm es util para terminar el programa normalmente.
+    // esto ayuda mucho en herramientas como valgrind.
+    signal(SIGTERM, sigterm_handler);
+    signal(SIGINT,  sigterm_handler);
+
 
     //////////////////////////////////////////////// CREATE IP V4 SOCKET ////////////////////////////////////////////////
     //TODO: hacer lo mismo para IPV6 como en tcpEchoAddrInfo.c y guardar la familia del IP usado en el struct httpd
     char *ip;
     unsigned short port = get_port();
-    int server = 0;
-
+    int serverV4 = 0;
+    int serverV6 = 0;
     char buff[30];
 
     if((ip = get_ipv4_addr()) != NULL){
@@ -83,8 +87,8 @@ main(const int argc, const char **argv) {
         
         addr.sin_port = htons(port);
 
-        server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if(server < 0) {
+        serverV4 = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if(serverV4 < 0) {
             err_msg = "unable to create IPV4 socket";
             goto finally;
         }
@@ -92,16 +96,21 @@ main(const int argc, const char **argv) {
         fprintf(stdout, "Listening IPV4 on TCP port %d\n", port);
 
         // man 7 ip. no importa reportar nada si falla.
-        setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
+        setsockopt(serverV4, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
         printf("binding ipv4 : %s\n", sockaddr_to_human(buff, 30, (struct sockaddr *)(&addr)));
-        if(bind(server, (struct sockaddr*) &addr, sizeof(addr)) < 0) {
+        if(bind(serverV4, (struct sockaddr*) &addr, sizeof(addr)) < 0) {
             err_msg = "unable to bind IPV4 socket";
             goto finally;
         }
 
-        if (listen(server, MAX_WAITING_CONNECTIONS) < 0) {
+        if (listen(serverV4, MAX_WAITING_CONNECTIONS) < 0) {
             err_msg = "unable to listen IPV4 socket";
             goto finally;
+        }
+        //hago que el fd del server socket sea O_NONBLOCK
+        if(selector_fd_set_nio(serverV4) == -1) {
+          err_msg = "getting server socket flags";
+          goto finally;
         }
     }
 
@@ -116,8 +125,8 @@ main(const int argc, const char **argv) {
             addr6.sin6_family = AF_INET6;
             addr6.sin6_port        = htons(port);
 
-            server = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
-            if(server < 0) {
+            serverV6 = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+            if(serverV6 < 0) {
                 err_msg = "unable to create IPV6 socket";
                 goto finally;
             }
@@ -125,32 +134,29 @@ main(const int argc, const char **argv) {
             fprintf(stdout, "Listening IPV6 on TCP port %d\n", port);
 
             // man 7 ip. no importa reportar nada si falla.
-            setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
+            setsockopt(serverV6, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
 
             printf("binding ipv6 : %s\n", sockaddr_to_human(buff, 30, (struct sockaddr *)(&addr6)));
-            if(bind(server, (struct sockaddr*) &addr6, sizeof(addr6)) < 0) {
+            if(bind(serverV6, (struct sockaddr*) &addr6, sizeof(addr6)) < 0) {
                 err_msg = "unable to bind IPV6 socket";
                 goto finally;
             }
 
-            if (listen(server, MAX_WAITING_CONNECTIONS) < 0) {
+            if (listen(serverV6, MAX_WAITING_CONNECTIONS) < 0) {
                 err_msg = "unable to listen IPV4 socket";
+                goto finally;
+            }
+            //hago que el fd del server socket sea O_NONBLOCK
+            if(selector_fd_set_nio(serverV6) == -1) {
+                err_msg = "getting server socket flags";
                 goto finally;
             }
     }
 
    
 
-    // registrar sigterm es util para terminar el programa normalmente.
-    // esto ayuda mucho en herramientas como valgrind.
-    signal(SIGTERM, sigterm_handler);
-    signal(SIGINT,  sigterm_handler);
-
-    //hago que el fd del server socket sea O_NONBLOCK
-    if(selector_fd_set_nio(server) == -1) {
-        err_msg = "getting server socket flags";
-        goto finally;
-    }
+ 
+    
     const struct selector_init conf = {
         .signal = SIGALRM,
         .select_timeout = {
@@ -174,10 +180,17 @@ main(const int argc, const char **argv) {
         .handle_write      = NULL,
         .handle_close      = NULL, // nada que liberar
     };
-    ss = selector_register(selector, server, &httpd,
+    ss = selector_register(selector, serverV4, &httpd,
                                               OP_READ, NULL);
     if(ss != SELECTOR_SUCCESS) {
-        err_msg = "registering fd";
+        err_msg = "registering fd IPV4";
+        goto finally;
+    }
+
+    ss = selector_register(selector, serverV6, &httpd,
+                                              OP_READ, NULL);
+    if(ss != SELECTOR_SUCCESS) {
+        err_msg = "registering fd IPV6";
         goto finally;
     }
     for(;!done;) {
@@ -211,8 +224,11 @@ finally:
 
     //socksv5_pool_destroy();
 
-    if(server >= 0) {
-        close(server);
+    if(serverV4 >= 0) {
+        close(serverV4);
+    }
+    if(serverV6 >= 0) {
+        close(serverV6);
     }
     return ret;
 }

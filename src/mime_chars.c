@@ -24,6 +24,7 @@ init_char_class(void) {
                   |  TOKEN_BCHARS
                   |  TOKEN_REST_NAME_FIRST
                   |  TOKEN_REST_NAME_CHARS
+                  |  TOKEN_UNRESERVED
                   ;
         }
         // 'a' - 'z'
@@ -36,6 +37,7 @@ init_char_class(void) {
                   |  TOKEN_BCHARS
                   |  TOKEN_REST_NAME_FIRST
                   |  TOKEN_REST_NAME_CHARS
+                  |  TOKEN_UNRESERVED
                   ;
         }
 
@@ -47,6 +49,7 @@ init_char_class(void) {
                   |  TOKEN_REST_NAME_FIRST
                   |  TOKEN_REST_NAME_CHARS
                   |  TOKEN_HEXA
+                  |  TOKEN_UNRESERVED
                   ;
         }
         if(i <= 31) {
@@ -210,5 +213,22 @@ init_char_class(void) {
     classes['.']  |= TOKEN_REST_NAME_CHARS;
     classes['+']  |= TOKEN_REST_NAME_CHARS;
 
+    /* unreserved  = ALPGA /DIGIT / "-" /  "." / "_" / "~" */
+    classes['-'] |= TOKEN_UNRESERVED;
+    classes['.'] |= TOKEN_UNRESERVED;
+    classes['_'] |= TOKEN_UNRESERVED;
+    classes['~'] |= TOKEN_UNRESERVED;
+
+    /*sub_delims = "!" / "$" / "&" / "'" / "(" / ")" / "*" / "+" / "," / ";" / "=" */
+    classes['!'] |= TOKEN_SUB_DELIMS;
+    classes['$'] |= TOKEN_SUB_DELIMS;
+    classes['&'] |= TOKEN_SUB_DELIMS;
+    classes['\''] |= TOKEN_SUB_DELIMS;
+    classes['('] |= TOKEN_SUB_DELIMS;
+    classes['*'] |= TOKEN_SUB_DELIMS;
+    classes['+'] |= TOKEN_SUB_DELIMS;
+    classes[','] |= TOKEN_SUB_DELIMS;
+    classes[';'] |= TOKEN_SUB_DELIMS;
+    classes['='] |= TOKEN_SUB_DELIMS;
     return classes;
 }

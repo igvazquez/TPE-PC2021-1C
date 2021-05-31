@@ -1,4 +1,5 @@
 #include "../include/httpdnio.h"
+#include "../include/request_line.h"
 #include "../include/stm.h"
 #include "../include/buffer.h"
 #include "../include/netutils.h"
@@ -35,14 +36,19 @@ static void httpd_close  (struct selector_key *key);
 static void connecting_init(const unsigned state,struct selector_key *key);
 static unsigned connecting_done(struct selector_key *key);
 
+static void request_line_init(const unsigned state,struct selector_key *key);
+static unsigned request_line_read(struct selector_key *key);
+
 static void copy_init(const unsigned state,struct selector_key *key);
 static unsigned copy_read(struct selector_key *key);
 static unsigned copy_write(struct selector_key *key);
 
 
+
 /** maquina de estados general */
 enum httpd_state {
     CONNECTING,
+    REQUEST_LINE_READ,
     COPY,
     // estados terminales
     DONE,
@@ -53,7 +59,7 @@ enum httpd_state {
 // Definición de variables para cada estado
 
 
-struct connecting{
+struct connecting_st{
     /* buffer utilizado para I/O */
     //buffer                *wb;
     int client_fd;
@@ -62,7 +68,13 @@ struct connecting{
  
 };
 
-struct copy{
+struct request_line_st{
+    buffer *rb;
+    struct request_line request_line_data;
+    struct request_line_parser parser;
+};
+
+struct copy_st{
     /* buffer utilizado para I/O */
     buffer *rb, *wb;
 
@@ -72,7 +84,7 @@ struct copy{
     fd_interest interest;
 
     /* origin.copy si soy cliente o client.copy si soy origin */
-    struct copy *copy_to;
+    struct copy_st *copy_to;
 };
 
 /*
@@ -96,8 +108,9 @@ struct httpd {
     socklen_t client_addr_len;
     int client_fd;
     /* estados para el client_fd */
-    union {  
-        struct copy copy;
+    union {
+        struct request_line_st request_line;
+        struct copy_st copy;
     } client;
 
     
@@ -108,8 +121,8 @@ struct httpd {
 
     /* estados para el origin_fd */
     union {
-        struct connecting connecting;
-        struct copy copy;
+        struct connecting_st connecting;
+        struct copy_st copy;
     } origin;
 
 };
@@ -121,6 +134,11 @@ static const struct state_definition client_statbl[] = {
         .state = CONNECTING,
         .on_arrival = connecting_init,
         .on_write_ready = connecting_done
+     },
+     {
+         .state = REQUEST_LINE_READ,
+         .on_arrival= request_line_init,
+         .on_read_ready = request_line_read
      },
     {
         .state = COPY,
@@ -302,6 +320,70 @@ fail:
     //socks5_destroy(state);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// REQUEST LINE
+////////////////////////////////////////////////////////////////////////////////
+
+static void request_line_init(const unsigned state,struct selector_key *key){
+    assert(state == REQUEST_LINE_READ);
+    struct httpd *data = ATTACHMENT(key);
+    struct request_line_st* rl = &(data->client.request_line);
+    request_line_parser_init(&(rl->parser));
+    rl->parser.request_line = &data->client.request_line.request_line_data;
+    rl->rb = &(data->from_origin_buffer);
+}
+static unsigned request_line_read(struct selector_key *key){
+
+    struct request_line_st* rl = &(ATTACHMENT(key)->client.request_line);
+
+    buffer *b = rl->rb;
+    bool error = false;
+    size_t wbytes;
+    uint8_t *read_buffer_ptr = buffer_write_ptr(b, &wbytes);
+    printf("wbytes = %ld\n", wbytes);
+    ssize_t numBytesRead = recv(key->fd, read_buffer_ptr, wbytes,0);
+    unsigned ret = REQUEST_LINE_READ;
+    if (numBytesRead > 0)
+    {
+        buffer_write_adv(b, numBytesRead);
+        bool done = request_line_parser_consume(b, &rl->parser, &error);
+        if(done){
+            if(error){
+                ret = ERROR;
+            }else{
+                printf("termine de parsear sin error\n");
+                printf("metodo: %s\n", rl->request_line_data.method);
+
+                switch(rl->request_line_data.request_target.host_type){
+                    case ipv6_addr_t:
+                        printf("ipv6 origen: %s\n", rl->parser.parsed_info.host.ipv6_buffer);
+                        break;
+                    case ipv4_addr_t:
+                        printf("ipv4 origen: %s\n", rl->parser.parsed_info.host.domain_or_ipv4_buffer);
+                        break;
+
+                    case domain_addr_t:
+                        printf("domain origen: %s\n", rl->parser.parsed_info.host.domain_or_ipv4_buffer);
+                        break;
+                }
+                printf("puerto: %d\n", ntohs(rl->request_line_data.request_target.port));
+                printf("version %d.%d\n", rl->parser.parsed_info.version_major, rl->parser.parsed_info.version_minor);
+                printf("1 origin form: %s\n", rl->request_line_data.request_target.origin_form);
+                printf("2 origin form: %s\n", rl->parser.parsed_info.origin_form_buffer);
+                request_line_parser_reset(&rl->parser);
+            }
+            //termine de consumir request line;
+            
+        }
+    }
+    else
+    {
+        ret = ERROR;
+    }
+
+    return error ? ERROR : ret;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // CONNECTING
@@ -356,7 +438,7 @@ finally:
 static void connecting_init(const unsigned state,struct selector_key *key){
     assert(state == CONNECTING);
     printf("connecting init\n");
-    struct connecting * connecting = &(ATTACHMENT(key)->origin.connecting);
+    struct connecting_st * connecting = &(ATTACHMENT(key)->origin.connecting);
 
     connecting->client_fd = ATTACHMENT(key)->client_fd;
     connecting->origin_fd = ATTACHMENT(key)->origin_fd;
@@ -368,7 +450,7 @@ static unsigned connecting_done(struct selector_key *key){
     int socket_error;
     socklen_t socket_error_len = sizeof(socket_error);
     bool error = false;
-    struct connecting * connecting = &(ATTACHMENT(key)->origin.connecting);
+    struct connecting_st * connecting = &(ATTACHMENT(key)->origin.connecting);
     // verifico si se conectó exitosamente al origin server
     if(getsockopt(connecting->origin_fd,SOL_SOCKET,SO_ERROR,&socket_error,&socket_error_len) == 0){
         if(socket_error == 0){
@@ -400,7 +482,7 @@ static unsigned connecting_done(struct selector_key *key){
         goto finally;
     }
 finally:
-    return error ? ERROR : COPY;
+    return error ? ERROR : REQUEST_LINE_READ;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -411,7 +493,7 @@ static void copy_init(const unsigned state,struct selector_key *key){
     assert(state == COPY);
     printf("COPY_INIT\n");
     struct httpd *data = ATTACHMENT(key);
-    struct copy *copy = &data->client.copy;
+    struct copy_st *copy = &data->client.copy;
 
     copy->fd = data->client_fd;
     copy->copy_to = &data->origin.copy;
@@ -427,12 +509,12 @@ static void copy_init(const unsigned state,struct selector_key *key){
     copy->wb = &data->from_origin_buffer;
 }
 
-static struct copy *get_copy_from_key(struct selector_key *key){
-    struct copy *copy = &ATTACHMENT(key)->client.copy;
+static struct copy_st *get_copy_from_key(struct selector_key *key){
+    struct copy_st *copy = &ATTACHMENT(key)->client.copy;
     return copy->fd == key->fd ? copy : copy->copy_to;
 }
 
-static void selector_set_new_interest(struct copy* copy,fd_selector s){
+static void selector_set_new_interest(struct copy_st* copy,fd_selector s){
 
     printf("%d) set new interest\n",copy->fd);
     assert(copy->fd > 0);
@@ -459,12 +541,12 @@ static void selector_set_new_interest(struct copy* copy,fd_selector s){
 }
 static unsigned copy_read(struct selector_key *key){
     printf("COPY_READ\n");
-    struct copy *copy = get_copy_from_key(key);
+    struct copy_st *copy = get_copy_from_key(key);
 
     size_t wbytes;
     /* quiero escribir en el read buffer de copy */
     uint8_t *read_buffer_ptr = buffer_write_ptr(copy->rb, &wbytes);
-    printf("wbytes = %d\n", wbytes);
+    printf("wbytes = %ld\n", wbytes);
     ssize_t numBytesRead = recv(key->fd, read_buffer_ptr, wbytes,0);
     
     unsigned ret = COPY;
@@ -490,7 +572,7 @@ static unsigned copy_read(struct selector_key *key){
     }else{
         // se leyó algo
         buffer_write_adv(copy->rb, numBytesRead);
-        printf("%d)Escribi %d bytes\n",key->fd, numBytesRead);
+        printf("%d)Escribi %ld bytes\n",key->fd, numBytesRead);
         printf("READ BUFFER\n");
         print_buffer(copy->rb);
         printf("\nWRITE BUFFER\n");
@@ -504,7 +586,7 @@ static unsigned copy_read(struct selector_key *key){
 static unsigned copy_write(struct selector_key *key){
 
     printf("COPY_WRITE\n");
-    struct copy *copy = get_copy_from_key(key);
+    struct copy_st *copy = get_copy_from_key(key);
 
     size_t rbytes;
     /* quiero leer en el write buffer de copy */
@@ -539,7 +621,7 @@ static unsigned copy_write(struct selector_key *key){
     }else{
         // se escribió algo
         buffer_read_adv(copy->wb, numBytesWritten);
-        printf("%d)Escribi %d bytes\n",key->fd, numBytesWritten);
+        printf("%d)Escribi %ld bytes\n",key->fd, numBytesWritten);
         printf("READ BUFFER\n");
         print_buffer(copy->rb);
         printf("\nWRITE BUFFER\n");

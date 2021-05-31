@@ -89,5 +89,6 @@ parser_feed     (struct parser *p, const uint8_t c);
 const unsigned *
 parser_no_classes(void);
 
+void parser_set_state(struct parser *p, unsigned state);
 
 #endif
