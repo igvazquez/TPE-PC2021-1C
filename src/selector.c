@@ -600,7 +600,7 @@ selector_select(fd_selector s) {
         }
     } else {
         handle_iteration(s);
-        printf("termin handle iteration\n");
+        
     }
     if(ret == SELECTOR_SUCCESS) {
         handle_block_notifications(s);

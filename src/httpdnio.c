@@ -173,7 +173,7 @@ static void
 httpd_read(struct selector_key *key) {
     struct state_machine *stm   = &(ATTACHMENT(key)->stm);
     const enum httpd_state st = stm_handler_read(stm, key);
-    printf("handle read\n");
+
     if(ERROR == st || DONE == st) {
         httpd_done(key);
     }
@@ -394,13 +394,23 @@ static unsigned request_line_read(struct selector_key *key)
 
 static unsigned request_line_process(struct request_line * rl,struct selector_key * key){
     unsigned ret = COPY;
+    struct sockaddr_in6 *addrV6;
+    struct sockaddr_in *addrV4;
+
+
     switch (rl->request_target.host_type)
     {
     case ipv6_addr_t:
-        ret = connect_to_origin(AF_INET6, (const struct sockaddr *)&(rl->request_target.host.ipv6), key);
+        addrV6 = &rl->request_target.host.ipv6;
+        addrV6->sin6_port = rl->request_target.port;
+        addrV6->sin6_family = AF_INET6;
+        ret = connect_to_origin(AF_INET6, (const struct sockaddr *)addrV6, key);
         break;
     case ipv4_addr_t:
-        ret = connect_to_origin(AF_INET, (const struct sockaddr *)&(rl->request_target.host.ipv4), key);
+        addrV4 = &rl->request_target.host.ipv4;
+        addrV4->sin_port = rl->request_target.port;
+        addrV4->sin_family = AF_INET;
+        ret = connect_to_origin(AF_INET, (const struct sockaddr *)addrV4, key);
         break;
 
     case domain_addr_t:
@@ -415,7 +425,11 @@ static unsigned request_line_process(struct request_line * rl,struct selector_ke
 ////////////////////////////////////////////////////////////////////////////////
 
 static unsigned connect_to_origin(int origin_family,const struct sockaddr* addr, struct selector_key*key){
-    
+     
+    char buff2[30];
+
+    sockaddr_to_human(buff2, 50, addr);
+    printf("%s", buff2);
     struct httpd *data = ATTACHMENT(key);
     struct request_line rl = data->client.request_line.request_line_data;
 
@@ -507,7 +521,7 @@ static unsigned connecting_done(struct selector_key *key){
         goto finally;
     }
 finally:
-    return error ? ERROR : REQUEST_LINE_READ;
+    return error ? ERROR : COPY;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

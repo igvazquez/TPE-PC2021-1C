@@ -285,7 +285,7 @@ static const struct parser_state_transition ST_PORT[] =  {
 static const struct parser_state_transition ST_HOST0[] =  {
     {.when = TOKEN_UNRESERVED,        .dest = FQDN_OR_IPV4,         .act1 = host,},
     {.when = TOKEN_SUB_DELIMS,        .dest = FQDN_OR_IPV4,         .act1 = host,},
-    {.when = '[',        .dest = IPV60,         .act1 = host,},
+    {.when = '[',        .dest = IPV60,         .act1 = ipv6_0,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
@@ -647,6 +647,7 @@ static void fill_request_line_data(struct request_line_parser * parser,bool *err
                 // la ipv6 no es correcta o inet_pton falló
                 //TODO: probablemente el bool * error en todas estas funciones deba cambiar por una enum para luego devolver una respuesta de error custom
                 *error = true;
+                printf("Not ipv6\n");
                 goto finally;
             }
             break;
