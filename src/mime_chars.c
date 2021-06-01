@@ -25,6 +25,7 @@ init_char_class(void) {
                   |  TOKEN_REST_NAME_FIRST
                   |  TOKEN_REST_NAME_CHARS
                   |  TOKEN_UNRESERVED
+                  |  TOKEN_TCHAR
                   ;
         }
         // 'a' - 'z'
@@ -38,6 +39,7 @@ init_char_class(void) {
                   |  TOKEN_REST_NAME_FIRST
                   |  TOKEN_REST_NAME_CHARS
                   |  TOKEN_UNRESERVED
+                  |  TOKEN_TCHAR
                   ;
         }
 
@@ -50,6 +52,7 @@ init_char_class(void) {
                   |  TOKEN_REST_NAME_CHARS
                   |  TOKEN_HEXA
                   |  TOKEN_UNRESERVED
+                  |  TOKEN_TCHAR
                   ;
         }
         if(i <= 31) {
@@ -230,5 +233,26 @@ init_char_class(void) {
     classes[','] |= TOKEN_SUB_DELIMS;
     classes[';'] |= TOKEN_SUB_DELIMS;
     classes['='] |= TOKEN_SUB_DELIMS;
+
+     /*    tchar          = "!" / "#" / "$" / "%" / "&" / "'" / "*"
+                    / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
+                    / DIGIT / ALPHA
+                    ; any VCHAR, except delimiters*/
+    classes['!'] |= TOKEN_TCHAR;
+    classes['#'] |= TOKEN_TCHAR;
+    classes['$'] |= TOKEN_TCHAR;
+    classes['%'] |= TOKEN_TCHAR;
+    classes['&'] |= TOKEN_TCHAR;
+    classes['\''] |= TOKEN_TCHAR;
+    classes['*'] |= TOKEN_TCHAR;
+    classes['+'] |= TOKEN_TCHAR;
+    classes['-'] |= TOKEN_TCHAR;
+    classes['.'] |= TOKEN_TCHAR;
+    classes['^'] |= TOKEN_TCHAR;
+    classes['_'] |= TOKEN_TCHAR;
+    classes['`'] |= TOKEN_TCHAR;
+    classes['~'] |= TOKEN_TCHAR;
+    classes['|'] |= TOKEN_TCHAR;
+                
     return classes;
 }

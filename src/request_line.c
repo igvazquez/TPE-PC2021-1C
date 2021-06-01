@@ -195,14 +195,14 @@ done(struct parser_event *ret, const uint8_t c) {
 // Transiciones
 static const struct parser_state_transition ST_METHOD0[] =  {
     {.when = ' ',        .dest = ERROR,         .act1 = unexpected,},
-    {.when = TOKEN_ALPHA,  .dest = METHOD,         .act1 = method,},
+    {.when = TOKEN_TCHAR,  .dest = METHOD,         .act1 = method,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
 
 static const struct parser_state_transition ST_METHOD[] =  {
     {.when = ' ',        .dest = SCHEME0,         .act1 = method_end,},
-    {.when = TOKEN_ALPHA,  .dest = METHOD,         .act1 = method,},
+    {.when = TOKEN_TCHAR,  .dest = METHOD,         .act1 = method,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
@@ -533,7 +533,13 @@ const struct parser_definition * request_line_parser_definition(void){
 
 void request_line_parser_init(struct request_line_parser *parser)
 {
-   // parser->start_line->addr_t = (DOMAIN_NAME | IPV4 | IPV6); // Al principio no sabemos cual es
+   assert(parser != NULL);
+   parser->rl_parser = parser_init(init_char_class(), request_line_parser_definition());
+   if (parser->rl_parser == NULL)
+   {
+       printf("parser_init returned null");
+       abort();
+    }
    parser->parsed_info.port = 0; 
    parser->parsed_info.method_counter = 0;
    parser->parsed_info.host_counter = 0;
@@ -541,12 +547,7 @@ void request_line_parser_init(struct request_line_parser *parser)
    parser->parsed_info.host_type = domain_or_ipv4_addr; // DEFAULT
    parser->parsed_info.has_user_info = false;
 
-   parser->rl_parser = parser_init(init_char_class(), request_line_parser_definition());
-   if (parser->rl_parser == NULL)
-   {
-       printf("parser_init returned null");
-       abort();
-    }
+ 
 }
 
 
@@ -719,9 +720,8 @@ finally:
 
 bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, bool *error){
 
-
+    assert(parser != NULL && buffer != NULL);
     const struct parser_event *e;
-
 
     while (buffer_can_read(buffer))
     {
@@ -732,7 +732,7 @@ bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, bo
         do{
             if (request_line_is_done(e->type, error))
             {
-                printf("request line done - error: %d", *error);
+                printf("request message done - error: %d\n", *error);
                 if(*error == false){
                     fill_request_line_data(parser, error);
                 }
@@ -748,7 +748,7 @@ bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, bo
     return false;
 }
 
-void request_line_parser_reset(struct request_line_parser *parser){
+void request_message_parser_reset(struct request_line_parser *parser){
    parser->parsed_info.port = 0; 
    parser->parsed_info.method_counter = 0;
    parser->parsed_info.host_counter = 0;
