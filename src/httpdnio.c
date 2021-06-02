@@ -16,9 +16,10 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <netinet/in.h>
+#include <stdbool.h>
 
 /**  tamaño del buffer de read y write **/
-#define MAX_BUFF_SIZE 4*1024
+#define MAX_BUFF_SIZE 1
 
 #define N(x) (sizeof(x)/sizeof((x)[0]))
 
@@ -41,6 +42,7 @@ static unsigned request_line_read(struct selector_key *key);
 
 static void request_line_write_init(const unsigned state,struct selector_key *key);
 static unsigned request_line_write(struct selector_key *key);
+static void request_line_write_on_departure(const unsigned state, struct selector_key *key);
 
 static void copy_init(const unsigned state,struct selector_key *key);
 static unsigned copy_read(struct selector_key *key);
@@ -53,6 +55,7 @@ enum httpd_state {
     REQUEST_LINE_READ,
     CONNECTING,
     REQUEST_LINE_WRITE,
+ 
     COPY,
     // estados terminales
     DONE,
@@ -74,9 +77,17 @@ struct connecting_st{
 
 struct request_line_st{
     buffer *rb;
+    
     struct request_line request_line_data;
     struct request_line_parser parser;
+    uint8_t *rl_to_send;
+    unsigned rl_to_send_len;
+    unsigned rl_to_send_written;
+    buffer rl_to_send_buffer;
 };
+
+
+
 
 struct copy_st{
     /* buffer utilizado para I/O */
@@ -135,20 +146,16 @@ struct httpd {
 /** Definición de handlers para cada estado */
 static const struct state_definition client_statbl[] = {
 
-     {
-         .state = REQUEST_LINE_READ,
-         .on_arrival= request_line_read_init,
-         .on_read_ready = request_line_read
-     },
-    {
-        .state = CONNECTING,
-        .on_arrival = connecting_init,
-        .on_write_ready = connecting_done
-     },
-    {
-        .state = REQUEST_LINE_WRITE,
-        .on_arrival = request_line_write_init,
-        .on_write_ready = request_line_write
+    {.state = REQUEST_LINE_READ,
+     .on_arrival = request_line_read_init,
+     .on_read_ready = request_line_read},
+    {.state = CONNECTING,
+     .on_arrival = connecting_init,
+     .on_write_ready = connecting_done},
+    {.state = REQUEST_LINE_WRITE,
+     .on_arrival = request_line_write_init,
+     .on_write_ready = request_line_write,
+     .on_departure = request_line_write_on_departure
      },
     {
         .state = COPY,
@@ -357,7 +364,7 @@ static unsigned request_line_read(struct selector_key *key)
                 printf("puerto: %d\n", ntohs(rl->request_line_data.request_target.port));
                 printf("version %d.%d\n", rl->parser.parsed_info.version_major, rl->parser.parsed_info.version_minor);
                 printf("origin form: %s\n", rl->parser.parsed_info.origin_form_buffer);
-                request_line_parser_reset(&rl->parser);
+                //request_line_parser_reset(&rl->parser);
 
                 //proceso la request line
                 ret = request_line_process(&rl->request_line_data,key);
@@ -472,7 +479,7 @@ static enum httpd_state get_next_state(char * method){
       
         return COPY;
     }else{
-        return COPY;
+        return REQUEST_LINE_WRITE;
     }
 }
 
@@ -490,17 +497,17 @@ static unsigned connecting_done(struct selector_key *key){
             printf("Me conecte bien a fd %d\n", connecting->origin_fd);
         
             // quiero leer del cliente
-            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->client_fd, OP_READ))
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->client_fd, OP_NOOP))
             {
                 error = true;
                 goto finally;
-           }
+            }
        
-            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->origin_fd, OP_READ))
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->origin_fd, OP_NOOP))
             {
                 error = true;
                 goto finally;
-           }
+            }
         }else{
             printf("2.socket_error == %d\n",socket_error);
             // hubo error en la conexión
@@ -524,20 +531,165 @@ finally:
 ////////////////////////////////////////////////////////////////////////////////
 // REQUEST LINE WRITE
 ////////////////////////////////////////////////////////////////////////////////
+
+
+static unsigned read_request_line(struct request_line_st* rl,fd_selector s,int origin_fd){
+    printf("read_request_line\n");
+    buffer *b = &rl->rl_to_send_buffer;
+ 
+    printf("buffer to send\n");
+    print_buffer(b);
+    size_t wbytes;
+    unsigned ret = REQUEST_LINE_WRITE;
+    bool error = false;
+    /* quiero escribir en el read buffer de client para que lo lea el origin */
+    uint8_t *read_buffer_ptr = buffer_write_ptr(b, &wbytes);
+    printf("wbytes = %ld\n", wbytes);
+    if(wbytes == 0){
+        printf("wbytes es 0 abort\n");
+        error = true;
+        goto finally;
+    }
+
+    int n = snprintf((char*)read_buffer_ptr, wbytes, (char*)rl->rl_to_send);
+    
+    printf("escribi %d bytes de la request line\n", n);
+    if(n < 0){
+         error = true;
+        goto finally;
+    }
+  
+    //rl->rl_to_send_read += n;
+    printf("request_line_to_send = %s\n",(char*) rl->rl_to_send);
+   /* if(rl->rl_to_send_read == rl->rl_to_send_len){
+        printf("ya lei toda la request line\n");
+    }*/
+    if (SELECTOR_SUCCESS != selector_set_interest(s,origin_fd, OP_WRITE))
+    {
+        error = true;
+        goto finally;
+    }
+finally:
+    return error ? ERROR : ret;
+}
+
+
+
 static void request_line_write_init(const unsigned state,struct selector_key *key){
     printf("request_line_init\n");
-    assert(state == REQUEST_LINE_READ);
+
+    
+    struct httpd *data = ATTACHMENT(key);
+    assert(state == REQUEST_LINE_WRITE && data->origin_fd != -1);
+    struct request_line_st* rl = &(data->client.request_line);
+
+    size_t method_len = strlen((char*)rl->request_line_data.method);
+    printf("len method %ld\n", method_len);
+    size_t origin_form_len = strlen((char*)rl->request_line_data.request_target.origin_form);
+    printf("origin_form_len method %ld\n", origin_form_len);
+    rl->rl_to_send_len = method_len + origin_form_len + 13;
+    rl->rl_to_send = (uint8_t*)malloc( rl->rl_to_send_len);
+ 
+   
+   
+
+    if(-1 == sprintf((char*)rl->rl_to_send,"%s %s HTTP/%d.%d\r\n",(char*)rl->request_line_data.method,(char*)rl->request_line_data.request_target.origin_form,1,0)){
+        abort();
+    }
+    rl->rl_to_send[rl->rl_to_send_len - 1] = '\0';
+    printf("request_line_to_send: %s\ntotal_len %d\n", rl->rl_to_send,rl->rl_to_send_len);
+    buffer *b = &rl->rl_to_send_buffer;
+    buffer_init(b, rl->rl_to_send_len,rl->rl_to_send);
+    buffer_write_adv(b,rl->rl_to_send_len);
+    //read_request_line(rl, key->s, data->origin_fd);
+    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_WRITE))
+    {
+        abort();
+    }
+}
+
+static void request_line_write_on_departure(const unsigned state,struct selector_key *key){
     struct httpd *data = ATTACHMENT(key);
     struct request_line_st* rl = &(data->client.request_line);
-    request_line_parser_init(&(rl->parser));
-    rl->parser.request_line = &(data->client.request_line.request_line_data);
-    rl->rb = &(data->from_origin_buffer);
+    free(rl->rl_to_send);
+ 
 }
+
 
 static unsigned request_line_write(struct selector_key *key){
+    printf("REQUEST_LINE_WRITE\n");
+    struct httpd *data = ATTACHMENT(key);
+    assert(data->origin_fd == key->fd);
 
+    struct request_line_st* rl = &(data->client.request_line);
+    buffer *b = &rl->rl_to_send_buffer;
+    size_t rbytes;
+    /* quiero leer en el write buffer de copy */
+    uint8_t *write_buffer_ptr = buffer_read_ptr(b, &rbytes);
+    printf("rbytes %ld \n", rbytes);
+    ssize_t numBytesWritten = send(key->fd, write_buffer_ptr, rbytes,MSG_NOSIGNAL);
+    printf("rl write numBytesWritten = %ld\n", numBytesWritten);
+    unsigned ret = REQUEST_LINE_WRITE;
+    bool error = false;
+
+    if(numBytesWritten < 0){
+        ret = ERROR;
+    }else if(numBytesWritten == 0){
+        printf("send devuelve 0\n");
+        // si llega EOF entonces debo quitar OP_WRITE del copy actual y OP_READ del copy_to
+        // la conexión no termina ya que puede quedar data en el buffer con dirección contraria
+        abort();
+    }else{
+        // se escribió algo
+        buffer_read_adv(b, numBytesWritten);
+        printf("%d)Escribi %ld bytes del request line\n",key->fd, numBytesWritten);
+        printf("\nWRITE BUFFER\n");
+        print_buffer(b);
+        rl->rl_to_send_written += numBytesWritten;
+        bool can_read = buffer_can_read(b);
+        bool finished_writting = rl->rl_to_send_written >= rl->rl_to_send_len;
+        if(finished_writting){
+            printf("termine de escribir la primera linea \n");
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
+            {
+                error = true;
+                goto finally;
+            }
+
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_READ))
+            {
+                error = true;
+                goto finally;
+            }
+            ret = COPY;
+        }else if(!finished_writting && can_read){
+            printf("no termine de escribir y puedo seguir leyendo\n");
+            // no termine de enviar al origin server toda la request line y puedo seguir leyendo del buffer
+
+
+        }else if(!can_read){
+            printf("no termine de escribir y no puedo leer\n");
+            error = true;
+            goto finally;
+        }
+            //read first line
+           
+           
+        
+      
+    }
+finally:
+    return error ? ERROR : ret;
+}   
+
+////////////////////////////////////////////////////////////////////////////////
+// REQUEST MESSAGE WRITE
+////////////////////////////////////////////////////////////////////////////////
+
+static void request_message_init(const unsigned state,struct selector_key *key){
+    struct httpd *data = ATTACHMENT(key);
+    struct copy_st *copy = &data->client.copy;
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // COPY
@@ -645,7 +797,7 @@ static unsigned copy_write(struct selector_key *key){
     size_t rbytes;
     /* quiero leer en el write buffer de copy */
     uint8_t *write_buffer_ptr = buffer_read_ptr(copy->wb, &rbytes);
-    printf("rbytes %d \n", rbytes);
+    printf("rbytes %ld \n", rbytes);
     ssize_t numBytesWritten = send(key->fd, write_buffer_ptr, rbytes,MSG_NOSIGNAL);
     printf("copy write numBytesWritten = %ld\n", numBytesWritten);
     unsigned ret = COPY;
