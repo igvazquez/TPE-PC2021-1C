@@ -36,8 +36,11 @@ static void httpd_close  (struct selector_key *key);
 static void connecting_init(const unsigned state,struct selector_key *key);
 static unsigned connecting_done(struct selector_key *key);
 
-static void request_line_init(const unsigned state,struct selector_key *key);
+static void request_line_read_init(const unsigned state,struct selector_key *key);
 static unsigned request_line_read(struct selector_key *key);
+
+static void request_line_write_init(const unsigned state,struct selector_key *key);
+static unsigned request_line_write(struct selector_key *key);
 
 static void copy_init(const unsigned state,struct selector_key *key);
 static unsigned copy_read(struct selector_key *key);
@@ -49,6 +52,7 @@ static unsigned copy_write(struct selector_key *key);
 enum httpd_state {
     REQUEST_LINE_READ,
     CONNECTING,
+    REQUEST_LINE_WRITE,
     COPY,
     // estados terminales
     DONE,
@@ -133,13 +137,18 @@ static const struct state_definition client_statbl[] = {
 
      {
          .state = REQUEST_LINE_READ,
-         .on_arrival= request_line_init,
+         .on_arrival= request_line_read_init,
          .on_read_ready = request_line_read
      },
     {
         .state = CONNECTING,
         .on_arrival = connecting_init,
         .on_write_ready = connecting_done
+     },
+    {
+        .state = REQUEST_LINE_WRITE,
+        .on_arrival = request_line_write_init,
+        .on_write_ready = request_line_write
      },
     {
         .state = COPY,
@@ -262,16 +271,11 @@ httpd_passive_accept(struct selector_key *key) {
         goto fail;
     }
   
-   // char buff2[30];
-   // sockaddr_to_human(buff2, 50, (struct sockaddr *)&client_addr);
-    //esto esta mal
-   // printf("Conexión entrante de %s\n", buff2);
     if(selector_fd_set_nio(client) == -1) {
         goto fail;
      }
     state = httpd_new(client);
-   // printf("State creado\n");
-     //   printf("2 direccion s: %p\n", key->s);
+
     if(state == NULL) {
         // sin un estado, nos es imposible manejaro.
         // tal vez deberiamos apagar accept() hasta que detectemos
@@ -282,34 +286,12 @@ httpd_passive_accept(struct selector_key *key) {
     memcpy(&state->client_addr, &client_addr, client_addr_len);
     state->client_addr_len = client_addr_len;
 
-    //TODO para proxy TCP llenar state->origin_addr con una IP harcodeada
-/*
-    struct sockaddr_storage origin_addr;
-    state->origin_addr_len = sizeof(origin_addr);
-    memset(&origin_addr, 0, sizeof(origin_addr));
-    struct sockaddr_in *tmp = (struct sockaddr_in *) &origin_addr;
-    tmp->sin_port = htons(9091);
-    tmp->sin_family = AF_INET;
-    if(inet_pton(AF_INET,"127.0.0.1",&(tmp->sin_addr)) <= 0){
-        goto fail;
-    }
-*/
-  // memcpy(&state->origin_addr, &origin_addr, sizeof(origin_addr));
     // no quiero leer desde el cliente hasta que me conecte con el origen
    if(SELECTOR_SUCCESS != selector_register(key->s, client, &httpd_handler,
                                               OP_READ, state)) {
         goto fail;
     }
 
-  //  printf("fin handler read direccion s: %p\n", key->s);
-   /* char buff1[30];
-    sockaddr_to_human(buff1, 50, (struct sockaddr *)&origin_addr);
-    //esto esta mal
-    printf("Conexión origin de %s\n", buff1);*/
-
-    //connect_to_origin(key->s,state);
-
-   // printf("pasive accept termina\n");
     return;
 
 fail:
@@ -322,10 +304,10 @@ fail:
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// REQUEST LINE
+// REQUEST LINE READ
 ////////////////////////////////////////////////////////////////////////////////
 
-static void request_line_init(const unsigned state,struct selector_key *key){
+static void request_line_read_init(const unsigned state,struct selector_key *key){
     printf("request_line_init\n");
     assert(state == REQUEST_LINE_READ);
     struct httpd *data = ATTACHMENT(key);
@@ -347,6 +329,7 @@ static unsigned request_line_read(struct selector_key *key)
     uint8_t *read_buffer_ptr = buffer_write_ptr(b, &wbytes);
     printf("wbytes = %ld\n", wbytes);
     ssize_t numBytesRead = recv(key->fd, read_buffer_ptr, wbytes,0);
+    printf("numBytesRead = %ld\n", numBytesRead);
     unsigned ret = REQUEST_LINE_READ;
     if (numBytesRead > 0)
     {
@@ -373,8 +356,7 @@ static unsigned request_line_read(struct selector_key *key)
                 }
                 printf("puerto: %d\n", ntohs(rl->request_line_data.request_target.port));
                 printf("version %d.%d\n", rl->parser.parsed_info.version_major, rl->parser.parsed_info.version_minor);
-                printf("user info: %s\n", rl->request_line_data.request_target.user_info);
-                printf("2 origin form: %s\n", rl->parser.parsed_info.origin_form_buffer);
+                printf("origin form: %s\n", rl->parser.parsed_info.origin_form_buffer);
                 request_line_parser_reset(&rl->parser);
 
                 //proceso la request line
@@ -393,7 +375,7 @@ static unsigned request_line_read(struct selector_key *key)
 }
 
 static unsigned request_line_process(struct request_line * rl,struct selector_key * key){
-    unsigned ret = COPY;
+    unsigned ret = ERROR;
     struct sockaddr_in6 *addrV6;
     struct sockaddr_in *addrV4;
 
@@ -420,6 +402,8 @@ static unsigned request_line_process(struct request_line * rl,struct selector_ke
     return ret;
 }
 
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // CONNECTING
 ////////////////////////////////////////////////////////////////////////////////
@@ -429,9 +413,9 @@ static unsigned connect_to_origin(int origin_family,const struct sockaddr* addr,
     char buff2[30];
 
     sockaddr_to_human(buff2, 50, addr);
-    printf("%s", buff2);
+    printf("%s\n", buff2);
     struct httpd *data = ATTACHMENT(key);
-    struct request_line rl = data->client.request_line.request_line_data;
+  
 
     bool error = false;
     unsigned ret = CONNECTING;
@@ -483,6 +467,14 @@ static void connecting_init(const unsigned state,struct selector_key *key){
     connecting->origin_fd = ATTACHMENT(key)->origin_fd;
 }
 
+static enum httpd_state get_next_state(char * method){
+    if(strcmp(method,"CONNECT") == 0){
+      
+        return COPY;
+    }else{
+        return COPY;
+    }
+}
 
 static unsigned connecting_done(struct selector_key *key){
     printf("Connecting done\n");
@@ -490,6 +482,7 @@ static unsigned connecting_done(struct selector_key *key){
     socklen_t socket_error_len = sizeof(socket_error);
     bool error = false;
     struct connecting_st * connecting = &(ATTACHMENT(key)->origin.connecting);
+  
     // verifico si se conectó exitosamente al origin server
     if(getsockopt(connecting->origin_fd,SOL_SOCKET,SO_ERROR,&socket_error,&socket_error_len) == 0){
         if(socket_error == 0){
@@ -503,7 +496,7 @@ static unsigned connecting_done(struct selector_key *key){
                 goto finally;
            }
        
-            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->origin_fd, OP_NOOP))
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->origin_fd, OP_READ))
             {
                 error = true;
                 goto finally;
@@ -516,13 +509,35 @@ static unsigned connecting_done(struct selector_key *key){
             goto finally;
         }
     }else{
+        
         printf("getsockopt != 0\n");
         error = true;
         goto finally;
     }
+
+    char *method = (char * )ATTACHMENT(key)->client.request_line.request_line_data.method;
+   
 finally:
-    return error ? ERROR : COPY;
+    return error ? ERROR : get_next_state(method);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// REQUEST LINE WRITE
+////////////////////////////////////////////////////////////////////////////////
+static void request_line_write_init(const unsigned state,struct selector_key *key){
+    printf("request_line_init\n");
+    assert(state == REQUEST_LINE_READ);
+    struct httpd *data = ATTACHMENT(key);
+    struct request_line_st* rl = &(data->client.request_line);
+    request_line_parser_init(&(rl->parser));
+    rl->parser.request_line = &(data->client.request_line.request_line_data);
+    rl->rb = &(data->from_origin_buffer);
+}
+
+static unsigned request_line_write(struct selector_key *key){
+
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // COPY
@@ -587,7 +602,7 @@ static unsigned copy_read(struct selector_key *key){
     uint8_t *read_buffer_ptr = buffer_write_ptr(copy->rb, &wbytes);
     printf("wbytes = %ld\n", wbytes);
     ssize_t numBytesRead = recv(key->fd, read_buffer_ptr, wbytes,0);
-    
+    printf("copy read numBytesRead = %ld\n", numBytesRead);
     unsigned ret = COPY;
 
    
@@ -632,7 +647,7 @@ static unsigned copy_write(struct selector_key *key){
     uint8_t *write_buffer_ptr = buffer_read_ptr(copy->wb, &rbytes);
     printf("rbytes %d \n", rbytes);
     ssize_t numBytesWritten = send(key->fd, write_buffer_ptr, rbytes,MSG_NOSIGNAL);
-   
+    printf("copy write numBytesWritten = %ld\n", numBytesWritten);
     unsigned ret = COPY;
 
  

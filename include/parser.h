@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
+
 /**
  * Evento que retorna el parser.
  * Cada tipo de evento tendrá sus reglas en relación a data.
@@ -28,6 +29,7 @@ struct parser_event {
     /** lista de eventos: si es diferente de null ocurrieron varios eventos */
     struct parser_event *next;
 };
+
 
 /** describe una transición entre estados  */
 struct parser_state_transition {
@@ -55,6 +57,23 @@ struct parser_definition {
 
     /** estado inicial */
     const unsigned                         start_state;
+};
+
+
+
+struct parser {
+    /** tipificación para cada caracter */
+    const unsigned     *classes;
+    /** definición de estados */
+    const struct parser_definition *def;
+
+    /* estado actual */
+    unsigned            state;
+
+    /* evento que se retorna */
+    struct parser_event e1;
+    /* evento que se retorna */
+    struct parser_event e2;
 };
 
 /**

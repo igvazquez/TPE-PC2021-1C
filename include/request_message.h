@@ -33,24 +33,6 @@ const struct parser_definition * request_headers_parser(void);
 
 // header parsing information
 
-struct header{
-    // funcion que corre cuando se termina de leer el value del header
-    void    (*on_value_end)(struct request_message_parser*parser);
-    /* storage del value del header
-     * según el RFC 7230 el value del header no tiene un límite
-     * nuestra aplicación decide usar el limite definido en MAX_HEADER_VALUE_LENGTH el cual si se supera se devolverá el error correspondiente
-     */
-    uint8_t value_storage[MAX_HEADER_VALUE_LENGTH+1];
-    // indice del value_storage
-    unsigned value_index;
-    // parser del header name
-    struct parser *name_parser;
-    // booleano que establece el estado de detección del header
-    bool* detected;
-    // booleano que establece si nos interesa guardar el value del header
-    bool want_storage;
-};
-
 typedef struct request_message_parser
 {
     struct header *headers_to_detect;
@@ -71,7 +53,28 @@ typedef struct request_message_parser
     unsigned add_index;
 
 } request_message_parser;
-void header_parsers_feed(struct parser_event* incoming,struct request_message_parser* parser);
+
+
+
+struct header{
+    // funcion que corre cuando se termina de leer el value del header
+    void    (*on_value_end)(struct request_message_parser*parser);
+    /* storage del value del header
+     * según el RFC 7230 el value del header no tiene un límite
+     * nuestra aplicación decide usar el limite definido en MAX_HEADER_VALUE_LENGTH el cual si se supera se devolverá el error correspondiente
+     */
+    uint8_t value_storage[MAX_HEADER_VALUE_LENGTH+1];
+    // indice del value_storage
+    unsigned value_index;
+    // parser del header name
+    struct parser *name_parser;
+    // booleano que establece el estado de detección del header
+    bool* detected;
+    // booleano que establece si nos interesa guardar el value del header
+    bool want_storage;
+};
+
+void header_parsers_feed(const struct parser_event* incoming,struct request_message_parser* parser);
 bool request_message_parser_consume(buffer* buffer,struct request_message_parser *parser,bool*error);
 bool request_message_is_done(enum request_message_event_type type, bool *error);
 void request_message_parser_init(struct request_message_parser*parser, unsigned header_quantity);

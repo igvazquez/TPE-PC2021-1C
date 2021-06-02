@@ -31,15 +31,13 @@ enum state
     SCHEME4,
     SCHEME5,
     SCHEME6,
-    MAYBE_USER0,
-    MAYBE_USER,
-    PORT0,
-    PORT,
     HOST0,
     FQDN_OR_IPV4,
     IPV60,
     IPV6,
     IPV6_END,
+    PORT0,
+    PORT,
     PATH0,
     PATH,
     QUERY0,
@@ -117,13 +115,6 @@ host_end(struct parser_event *ret, const uint8_t c) {
     ret->data[0] = c;
 }
 
-
-static void
-userinfo_end(struct parser_event *ret, const uint8_t c) {
-    ret->type    = RL_USERINFO_END;
-    ret->n       = 1;
-    ret->data[0] = c;
-}
 
 static void
 port(struct parser_event *ret, const uint8_t c) {
@@ -236,49 +227,7 @@ static const struct parser_state_transition ST_SCHEME5[] =  {
 };
 
 static const struct parser_state_transition ST_SCHEME6[] =  {
-    {.when = '/',        .dest = MAYBE_USER0,         .act1 = scheme,},
-    {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
-};
-
-static const struct parser_state_transition ST_MAYBE_USER0[] =  {
-    {.when = TOKEN_UNRESERVED,        .dest = MAYBE_USER,         .act1 = host,},
-    {.when = TOKEN_SUB_DELIMS,        .dest = MAYBE_USER,         .act1 = host,},
-    {.when = '[',        .dest = IPV60,         .act1 = ipv6_0,},
-    {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
-};
-
-
-static const struct parser_state_transition ST_MAYBE_USER[] =  {
-    {.when = TOKEN_UNRESERVED,        .dest = MAYBE_USER,         .act1 = host,},
-    {.when = TOKEN_SUB_DELIMS,        .dest = MAYBE_USER,         .act1 = host,},
-    {.when = '@',        .dest = HOST0,         .act1 = userinfo_end,},
-    {.when = ':',        .dest = PORT0,         .act1 = host_end}, // Esto era dest: MAYBE_PORT, estoy diciendo que solo acepto userinfo y no acepto :password o : con password vacía
-    {.when = '/',        .dest = PATH0,         .act1 = host_end,.act2 = origin_form},
-    {.when = '?',        .dest = QUERY0,         .act1 = host_end,.act2 = origin_form},
-    {.when = '#',        .dest = FRAGMENT0,         .act1 = host_end,.act2 = origin_form},
-    {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = host_end,},
-    {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
-};
-/*
-static const struct parser_state_transition MAYBE_PORT[] =  {
-    {.when = TOKEN_DIGIT,        .dest = PORT,         .act1 = host,},
-    {.when = '@',        .dest = HOST0,         .act1 = host,},
-    {.when = ANY,        .dest = ERROR,         .act1 = bad_uri,},
-};
-*/
-static const struct parser_state_transition ST_PORT0[] =  {
-    {.when = TOKEN_DIGIT,        .dest = PORT,         .act1 = port,},
-   // {.when = '@',        .dest = HOST0,         .act1 = host,},
-    {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
-};
-
-
-static const struct parser_state_transition ST_PORT[] =  {
-    {.when = TOKEN_DIGIT,        .dest = PORT,         .act1 = port,},
-    {.when = '/',        .dest = PATH0,         .act1 = host_end,.act2 = origin_form},
-    {.when = '?',        .dest = QUERY0,         .act1 = host_end,.act2 = origin_form},
-    {.when = '#',        .dest = FRAGMENT0,         .act1 = host_end,.act2 = origin_form},
-    {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = host_end,},
+    {.when = '/',        .dest = HOST0,         .act1 = scheme,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
@@ -321,6 +270,25 @@ static const struct parser_state_transition ST_IPV6_END[] =  {
     {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = host_end,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
+
+
+static const struct parser_state_transition ST_PORT0[] =  {
+    {.when = TOKEN_DIGIT,        .dest = PORT,         .act1 = port,},
+   // {.when = '@',        .dest = HOST0,         .act1 = host,},
+    {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
+};
+
+
+static const struct parser_state_transition ST_PORT[] =  {
+    {.when = TOKEN_DIGIT,        .dest = PORT,         .act1 = port,},
+    {.when = '/',        .dest = PATH0,         .act1 = host_end,.act2 = origin_form},
+    {.when = '?',        .dest = QUERY0,         .act1 = host_end,.act2 = origin_form},
+    {.when = '#',        .dest = FRAGMENT0,         .act1 = host_end,.act2 = origin_form},
+    {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = host_end,},
+    {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
+};
+
+
 
 static const struct parser_state_transition ST_PATH0[] =  {
     {.when = ' ',        .dest = HTTP_VERSION_NAME0,         .act1 = origin_form_end,},
@@ -446,15 +414,13 @@ static const struct parser_state_transition *states[] =
     ST_SCHEME4,
     ST_SCHEME5,
     ST_SCHEME6,
-    ST_MAYBE_USER0,
-    ST_MAYBE_USER,
-    ST_PORT0,
-    ST_PORT,
     ST_HOST0,
     ST_FQDN_OR_IPV4,
     ST_IPV60,
     ST_IPV6,
     ST_IPV6_END,
+    ST_PORT0,
+    ST_PORT,
     ST_PATH0,
     ST_PATH,
     ST_QUERY0,
@@ -487,15 +453,13 @@ static const size_t states_n [] = {
     N(ST_SCHEME4),
     N(ST_SCHEME5),
     N(ST_SCHEME6),
-    N(ST_MAYBE_USER0),
-    N(ST_MAYBE_USER),
     N(ST_PORT0),
-    N(ST_PORT),
     N(ST_HOST0),
     N(ST_FQDN_OR_IPV4),
     N(ST_IPV60),
     N(ST_IPV6),
     N(ST_IPV6_END),
+    N(ST_PORT),
     N(ST_PATH0),
     N(ST_PATH),
     N(ST_QUERY0),
@@ -545,7 +509,6 @@ void request_line_parser_init(struct request_line_parser *parser)
    parser->parsed_info.host_counter = 0;
    parser->parsed_info.origin_form_counter = 0;
    parser->parsed_info.host_type = domain_or_ipv4_addr; // DEFAULT
-   parser->parsed_info.has_user_info = false;
 
  
 }
@@ -568,7 +531,6 @@ static bool process_event(const struct parser_event * e,request_line_parser *par
     case RL_METHOD_END:
         parsed_info->method_buffer[parsed_info->method_counter] = '\0';
         if(strcmp(parsed_info->method_buffer,"CONNECT") == 0){
-            // si es connect parseo authority-form = authority (sin userinfo ni @)
             set_authority_form(parser->rl_parser);
         }
         break;
@@ -616,11 +578,6 @@ static bool process_event(const struct parser_event * e,request_line_parser *par
         break;
     case RL_HTTP_VERSION_MINOR:
         parsed_info->version_minor = e->data[0] - '0';  
-        break;
-    case RL_USERINFO_END:
-        memcpy(parsed_info->user_info, parsed_info->host.domain_or_ipv4_buffer, parsed_info->host_counter+1);
-        parsed_info->has_user_info = true;
-        parsed_info->host_counter = 0;
         break;
     case RL_WAIT:
         // nada
@@ -678,10 +635,7 @@ static void fill_request_line_data(struct request_line_parser * parser,bool *err
     }
     
     memcpy(rl->request_target.origin_form, pi.origin_form_buffer, pi.origin_form_counter+1);
-    if(pi.has_user_info){
-        memcpy(rl->request_target.user_info, pi.user_info, strlen(pi.user_info)+1);
-    }
-  
+
     if(pi.port != 0){
        
         rl->request_target.port = htons(pi.port);
@@ -748,13 +702,12 @@ bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, bo
     return false;
 }
 
-void request_message_parser_reset(struct request_line_parser *parser){
+void request_line_parser_reset(struct request_line_parser *parser){
    parser->parsed_info.port = 0; 
    parser->parsed_info.method_counter = 0;
    parser->parsed_info.host_counter = 0;
    parser->parsed_info.origin_form_counter = 0;
    parser->parsed_info.host_type = domain_or_ipv4_addr; // DEFAULT
-   parser->parsed_info.has_user_info = false;
    parser_reset(parser->rl_parser);
 }
 
@@ -779,144 +732,3 @@ bool request_line_is_done(enum request_line_event_type type, bool *error){
         };
         return false;
 }
-/*
-static enum start_line_state scheme(struct parser* parser,uint8_t c){
-         enum string_cmp_event_types event_type = parser_feed(parser, c)->type;
-         enum start_line_state ret = SL_ERROR_BAD_URI;
-         switch (event_type)
-         {
-         case STRING_CMP_MAYEQ:
-             ret = SL_REQUEST_TARGET_SCHEME;
-             break;
-         case STRING_CMP_EQ:
-             ret = SL_REQUEST_TARGET_HOST;
-             break;
-         case STRING_CMP_NEQ:
-             printf("scheme not equals bro\n");
-             ret = SL_ERROR_BAD_URI;
-             break;
-         };
-
-        return ret;
-}
-*/
-/*
-static enum start_line_state host(struct start_line * sl, uint8_t c){
-    addr_type type = sl->addr_t;
-    switch (type)
-    {
-    case UNKOWN_ADDR_TYPE:
-        if(c == '['){
-            sl->addr_t = IPV6;
-        }else{
-            sl->addr_t = DOMAIN_NAME_OR_IPV4;
-        }
-       
-        break;
-    case DOMAIN_NAME_OR_IPV4:
-        if(c == ':'){
-            return SL_REQUEST_TARGET_PORT;
-        }else if(c == '/'){
-            return SL_REQUEST_TARGET_PATH;
-        }
-        sl->host.fqdn_or_ipv4[sl->host_counter++] = c;
-
-        break;
-    case IPV6:
-        if(c == ']'){
-            return SL_REQUEST_TARGET_PORT;
-        }
-        sl->host.dir_ipv6[sl->host_counter++] = c;
-        break;
-
-        default:
-        break;
-        };
-        return SL_REQUEST_TARGET_PATH;
-}
-
-
-
-static enum start_line_state port(struct start_line *sl, uint8_t c){
-    addr_type type = sl->addr_t;
-    switch (type){
-        //asdas]:80 o asd]/
-        case IPV6:
-            if (c == ':')
-            {
-                if(sl->port == -1){
-                    //no asigne puerto
-                }
-            }
-           break;
-
-           //localhost:80/ 
-        case DOMAIN_NAME_OR_IPV4:
-            if(c != ' ' && c!= '/'){
-            };
-            break;
-        };
-
-        return SL_REQUEST_TARGET_PATH;
-}
-static enum start_line_state path(struct start_line *sl, uint8_t c){
-    return SL_ERROR_BAD_URI;
-}
-*/
-
-/*
-enum start_line_state start_line_parser_feed(start_line_parser *parser, uint8_t c){
-    enum start_line_state current_state = parser->state;
-    enum start_line_state ret = SL_DONE;
-    switch(current_state){
-        case SL_METHOD:
-       
-            printf("Lei caracter %c \n", c);
-            if(c == ' '){
-               
-                parser->start_line->method_buffer[parser->start_line->method_counter] = '\0';
-                parser->start_line->method_type = get_method_type(parser->start_line->method_buffer);
-                ret = SL_REQUEST_TARGET_SCHEME;
-            }else{
-         
-                parser->start_line->method_buffer[(parser->start_line->method_counter)++] = c;
-                ret = SL_METHOD;
-            }
-            printf("method = %s\n",parser->start_line->method_buffer);
-            break;
-        case SL_REQUEST_TARGET_SCHEME:
-            printf("scheme: %c\n", c);
-            ret = scheme(parser->scheme_parser,c);
-            break;
-        case SL_REQUEST_TARGET_HOST:
-            printf("en target_host: method = %s\n",parser->start_line->method_buffer);
-            ret = host(parser->start_line, c);
-          
-            break;
-        case SL_REQUEST_TARGET_PORT:
-            ret = port(parser->start_line, c);
-            break;
-        case SL_REQUEST_TARGET_PATH:
-            ret = path(parser->start_line, c);
-            break;
-        case SL_HTTP_VERSION:
-
-            break;
-        case SL_ERROR_UNSUPPORTED_METHOD:
-            ret =  SL_ERROR_UNSUPPORTED_METHOD;
-            break;
-        case SL_ERROR_UNSUPPORTED_HTTP_VERSION:
-            ret =  SL_ERROR_UNSUPPORTED_HTTP_VERSION;
-            break;
-        case SL_ERROR_BAD_URI:
-            ret = SL_ERROR_BAD_URI;
-            break;
-
-        default:
-            abort();
-            break;
-    }
-    parser->state = ret;
-    return ret;
-}
-*/

@@ -5,6 +5,7 @@
 #include "../include/buffer.h"
 #include <stdlib.h>
 #include <assert.h>
+#include <stdio.h>
 enum states
 {
     FIELD_NAME0,
@@ -47,22 +48,7 @@ value_cr(struct parser_event *ret, const uint8_t c) {
     ret->n       = 1;
     ret->data[0] = '\r';
 }
-/*
-static void
-value_fold_crlf(struct parser_event *ret, const uint8_t c) {
-    ret->type    = MIME_MSG_VALUE_FOLD;
-    ret->n       = 2;
-    ret->data[0] = '\r';
-    ret->data[1] = '\n';
-}
 
-static void
-value_fold(struct parser_event *ret, const uint8_t c) {
-    ret->type    = MIME_MSG_VALUE_FOLD;
-    ret->n       = 1;
-    ret->data[0] = c ;
-}
-*/
 static void
 value_end(struct parser_event *ret, const uint8_t c) {
     ret->type    = RM_FIELD_VALUE_END;
@@ -128,10 +114,6 @@ static const struct parser_state_transition ST_FIELD_VALUE_CR[] =  {
 static const struct parser_state_transition ST_FIELD_VALUE_CRLF[] =  {
     {.when = ':',        .dest = ERROR,          .act1 = unexpected,},
     {.when = '\r',       .dest = FIELD_VALUE_CRLF_CR,  .act1 = wait,},
- /*   {.when = TOKEN_LWSP, .dest = FOLD,           .act1 = value_fold_crlf,
-                                                 .act2 = value_fold,},
-    {.when = TOKEN_CTL,  .dest = ERROR,          .act1 = value_end,
-                                                 .act2 = unexpected,},*/
     {.when = TOKEN_TCHAR, .dest = FIELD_NAME0,           .act1 = value_end,
                                                  .act2 = field_name,      },
     {.when = ANY,        .dest = ERROR,          .act1 = unexpected,},
@@ -187,19 +169,20 @@ static struct parser_definition definition = {
     .start_state  = FIELD_NAME0,
 };
 
-const struct parser_definition * request_line_parser_definition(void){
+const struct parser_definition * request_message_parser_definition(void){
     return &definition;
 }
 static bool T = true;
 static bool F = false;
 
 
-void header_parsers_feed(struct parser_event* incoming,struct request_message_parser* parser)
+
+void header_parsers_feed(const struct parser_event* incoming,struct request_message_parser* parser)
 {
     unsigned header_quantity = parser->header_quantity;
 
     struct header* h;
-    struct parser_event *e;
+    const struct parser_event *e;
     unsigned n = incoming->n;
     struct header *detected = NULL;
     for (unsigned i = 0; i < header_quantity; i++)
@@ -236,35 +219,10 @@ bool request_message_is_done(enum request_message_event_type type, bool *error){
     return false;
 }
 
-bool request_message_parser_consume(buffer* buffer,struct request_message_parser * parser, bool *error){
-    const struct parser_event *e;
 
-    while (buffer_can_read(buffer))
-    {
-        uint8_t c = buffer_read(buffer);
-        printf("Leo: %c\n", c);
-        e = parser_feed(parser->rm_parser, c);
-        printf("Estado: %d\n", e->type);
-        do{
-            if (request_message_is_done(e->type, error))
-            {
-                printf("request message done - error: %d", *error);
-                if(*error == false){
-                   // fill_request_line_data(parser, error);
-                }
-                return true;
-            }
-            if((*error = process_event(e,parser))){
-                //dio error
-                return true;
-            }
-            e = e->next;
-        } while (e != NULL);
-    }
-    return false;
-}
 
-static header_parsers_reset(struct request_message_parser* parser){
+
+static void header_parsers_reset(struct request_message_parser* parser){
     unsigned header_quantity = parser->header_quantity;
     struct header *h;
     for (unsigned i = 0; i < header_quantity; i++)
@@ -277,8 +235,8 @@ static header_parsers_reset(struct request_message_parser* parser){
     parser->mismatch_counter = 0;
 }
 
-static bool header_value(struct header * h, struct parser_event* e){
-    for(unsigned i; i < e->n;i++){
+static bool header_value(struct header * h, const struct parser_event* e){
+    for(unsigned i = 0; i < e->n;i++){
         if(h->value_index > MAX_HEADER_VALUE_LENGTH){
             return true;
         }
@@ -310,9 +268,9 @@ static bool process_event(const struct parser_event *e, request_message_parser *
             break;
         case RM_FIELD_VALUE_END:
             // si detecté algun header ya terminó
-            struct header *current_detection = parser->current_detection;
-            if (current_detection != NULL && current_detection->on_value_end != NULL){
-                current_detection->on_value_end(parser);
+          
+            if (parser->current_detection != NULL && parser->current_detection->on_value_end != NULL){
+                parser->current_detection->on_value_end(parser);
             }
             parser->current_detection = NULL;
             break;
@@ -322,9 +280,39 @@ static bool process_event(const struct parser_event *e, request_message_parser *
     return false;
 }
 
+
+
+bool request_message_parser_consume(buffer* buffer,struct request_message_parser * parser, bool *error){
+    const struct parser_event *e;
+
+    while (buffer_can_read(buffer))
+    {
+        uint8_t c = buffer_read(buffer);
+        printf("Leo: %c\n", c);
+        e = parser_feed(parser->rm_parser, c);
+        printf("Estado: %d\n", e->type);
+        do{
+            if (request_message_is_done(e->type, error))
+            {
+                printf("request message done - error: %d", *error);
+                if(*error == false){
+                   // fill_request_line_data(parser, error);
+                }
+                return true;
+            }
+            if((*error = process_event(e,parser))){
+                //dio error
+                return true;
+            }
+            e = e->next;
+        } while (e != NULL);
+    }
+    return false;
+}
+
 void request_message_parser_init(struct request_message_parser*parser, unsigned header_quantity){
     assert(parser != NULL);
-    parser->rm_parser = parser_init(init_char_class(), request_line_parser_definition());
+    parser->rm_parser = parser_init(init_char_class(), request_message_parser_definition());
     if (parser->rm_parser == NULL)
     {
         printf("parser_init returned null");
@@ -344,7 +332,7 @@ void request_message_parser_init(struct request_message_parser*parser, unsigned 
     parser->content_lenght = 0;
     parser->add_index = 0;
 }
-bool add_header(struct request_message_parser *parser, char *header_name, bool want_storage, void (*on_value_end)(struct request_message_parser*parser)){
+bool add_header(struct request_message_parser *parser, char *header_name, bool want_storage, void(*on_value_end)(struct request_message_parser*parser)){
     assert(parser != NULL && header_name != NULL);
     if(parser->add_index >= parser->header_quantity){
         abort();
@@ -352,9 +340,9 @@ bool add_header(struct request_message_parser *parser, char *header_name, bool w
     struct parser_definition def = parser_utils_strcmpi(header_name);
     struct parser *name_parser = parser_init(parser_no_classes(), &def);
     if(name_parser == NULL){
-        aboert();
+        abort();
     }
-    parser->headers_to_detect[parser->add_index++] = {
+    parser->headers_to_detect[parser->add_index++] = (struct header) {
         .name_parser = name_parser,
         .on_value_end = on_value_end,
         .want_storage = want_storage,

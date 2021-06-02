@@ -83,7 +83,7 @@ struct request_line {
             ipv6_addr_t,
         } host_type;
         
-         char user_info[MAX_FQDN_LENGTH + 1]; 
+    
         // host y port aplican a todos
 
         /** el host al cual hay que conectarse puede estar escrito de tres formas */
@@ -124,7 +124,6 @@ enum request_line_event_type
     RL_IPV6_0,
     RL_IPV6,
     RL_IPV6_END,
-    RL_USERINFO_END,
     RL_PORT,
     RL_ORIGIN_FORM,
     RL_ORIGIN_FORM_END,
@@ -148,9 +147,6 @@ struct parsed_info{
     //METHOD 
     char method_buffer[MAX_METHOD_LENGTH +1];
     unsigned method_counter;
-   // enum method_type method_type;
-    bool has_user_info;
-    char user_info[MAX_FQDN_LENGTH + 1]; // nose cual es la max length de userinfo no dice nada el RFC
     //HOST
     enum parsed_info_addr_type {
             domain_or_ipv4_addr,
