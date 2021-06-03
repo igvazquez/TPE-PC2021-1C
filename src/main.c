@@ -30,9 +30,7 @@
 #include "../include/args.h"
 #include "../include/netutils.h"
 #include "../include/parser_utils.h"
-#include "../include/pop3_multi.h"
 #include "../include/mime_chars.h"
-#include "../include/mime_msg.h"
 #define MAX_SOCKETS 1024
 
 #define STDIN_FILENO 0

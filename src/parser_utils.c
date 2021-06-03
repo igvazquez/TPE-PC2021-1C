@@ -71,7 +71,7 @@ neq(struct parser_event *ret, const uint8_t c) {
  * };
  *
  */
-struct parser_definition
+struct parser_definition*
 parser_utils_strcmpi(const char *s) {
     const size_t n = strlen(s);
 
@@ -84,13 +84,7 @@ parser_utils_strcmpi(const char *s) {
         free(nstates);
         free(transitions);
 
-        struct parser_definition def = {
-            .start_state   = 0,
-            .states_count  = 0,
-            .states        = NULL,
-            .states_n      = NULL,
-        };
-        return def;
+        return NULL;
     }
 
     // estados fijos
@@ -125,13 +119,14 @@ parser_utils_strcmpi(const char *s) {
     states     [(n + 1)]            = transitions + ((n + 1) * 3 + 0);
     nstates    [(n + 1)]            = 1;
 
-
-    struct parser_definition def = {
-        .start_state   = 0,
-        .states_count  = n + 2,
-        .states        = (const struct parser_state_transition **) states,
-        .states_n      = (const size_t *) nstates,
+    struct parser_definition *def = (struct parser_definition*)malloc(sizeof(struct parser_definition));
+    struct parser_definition aux_init = {
+        .start_state = 0,
+        .states_count = n + 2,
+        .states = (const struct parser_state_transition **)states,
+        .states_n = (const size_t *)nstates,
     };
+    memcpy(def, &aux_init, sizeof(struct parser_definition));
 
     return def;
 }
