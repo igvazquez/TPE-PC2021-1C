@@ -102,5 +102,5 @@ void request_message_parser_init(struct request_message_parser*parser, unsigned 
 void add_header(struct request_message_parser *parser, char *header_name,header_interest interest ,const char* replacement, void (*on_value_end)(struct request_message_parser*parser));
 void request_message_parser_reset(struct request_message_parser *parser);
 void request_message_parser_destroy(struct request_message_parser *parser);
-bool request_message_parser_process(const struct parser_event *e, request_message_parser *parser);
+bool request_message_parser_process(const struct parser_event *e, request_message_parser *parser, uint8_t *write_buffer, unsigned *write_index,bool * error);
 #endif

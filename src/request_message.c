@@ -248,7 +248,8 @@ static void header_parsers_reset(struct request_message_parser* parser){
 }
 
 
-bool request_message_parser_process(const struct parser_event *e, request_message_parser *parser)
+
+bool request_message_parser_process(const struct parser_event *e, request_message_parser *parser,uint8_t *write_buffer,unsigned* write_index,bool *error)
 {
     struct header *current_detection = parser->current_detection;
     switch (e->type)
@@ -261,6 +262,7 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
             }
             for (unsigned i = 0; i < e->n; i++){
                 if(parser->current_name_index > MAX_HEADER_NAME_LENGTH){
+                    *error = true;
                     return true;
                 }
                 parser->current_name_storage[parser->current_name_index++] = e->data[i];
@@ -268,63 +270,110 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
          
             break;
         case RM_FIELD_NAME_END:
-           //  printf("field name end\n");
+             printf("field name end\n");
             header_parsers_reset(parser);
+            if(current_detection == NULL || !(current_detection->interest & HEADER_IGNORE)){
+
+                memcpy(write_buffer + *write_index, parser->current_name_storage, parser->current_name_index);
+                *write_index += parser->current_name_index;
+                write_buffer[(*write_index)++] = ':';
+                write_buffer[(*write_index)++] = ' ';
+            }
+                  
+            parser->current_name_index = 0;
             printf("PARSERS RESET\n");
             break;
         case RM_FIELD_VALUE:
-         //printf("field value\n");
+         printf("field value\n");
             if(current_detection != NULL && (current_detection->interest & HEADER_STORAGE)){
                 for (unsigned i = 0; i < e->n; i++){
                     if(current_detection->value_index > MAX_HEADER_VALUE_LENGTH){
+                        *error = true;
                         return true;
                     }
                     current_detection->value_storage[current_detection->value_index++] = e->data[i];
                 }
         
             }
+            if(current_detection == NULL || (current_detection->interest & HEADER_SEND)){
+                for (unsigned i = 0; i < e->n;i++){
+                    write_buffer[(*write_index)++] = e->data[i];
+                }     
+                    
+            }
+         
            
             break;
         case RM_FIELD_VALUE_END:
-        // printf("field value end\n");
+         printf("field value end\n");
             // si detecté algun header, ya terminó
             if(current_detection != NULL){
                  printf("CURRENT DETECTION != NULL\n");
                 if(current_detection->interest & HEADER_STORAGE){
                      printf("ENTRA STORAGE\n");
-                   /* for (unsigned i = 0; i < e->n; i++){
-                        if(current_detection->value_index >= MAX_HEADER_VALUE_LENGTH+3){
-                            return true;
-                        }
-                        
-                    }*/
                     current_detection->value_storage[current_detection->value_index++] = '\0';
                     current_detection->value_index = 0;
                 }
-                
+                if(current_detection->interest & HEADER_REPLACE){
+                    char replacement_c = current_detection->value_storage[current_detection->value_index++];
+                    while(replacement_c != '\0'){
+                        printf("reemplazo %c\n", replacement_c);
+                        printf("write index %d\n", *write_index);
+                        write_buffer[(*write_index)++] = replacement_c;
+                         printf("write index %d\n", *write_index);
+                        replacement_c = current_detection->value_storage[current_detection->value_index++];
+                         printf("aca %d\n", *write_index);
+                    }
+                    current_detection->value_index = 0;
+                } 
                 if (current_detection->on_value_end != NULL)
                 {
                      printf("CORRE ON VALUE END\n");
                     current_detection->on_value_end(parser);
                 }
-                
             }else{
                 printf("CURRENT DETECTION = NULL\n");
             }
-     
+            if(current_detection == NULL || !(current_detection->interest & HEADER_IGNORE)){
+                write_buffer[(*write_index)++] = '\r';
+                write_buffer[(*write_index)++] = '\n';
+            }
+            if(e->next == NULL){
+                printf("SET CURRENT DETECTION = NULL\n");
+                parser->current_detection = NULL;
+            }
             break;
         case RM_BODY_START:
+            printf("body start\n");
+            for (unsigned i = 0; i < e->n;i++){
+                write_buffer[(*write_index)++] = e->data[i];
+                       
+            }
+            if(parser->content_lenght == 0){
+                return true;
+            }
+            break;
         case RM_BODY:
             printf("body\n");
+             for (unsigned i = 0; i < e->n;i++){
+                if(parser->content_lenght > 0){
+                    write_buffer[(*write_index)++] = e->data[i];
+                    parser->content_lenght--;
+                }else{
+                     break;
+                }
+                       
+            }
+            if(parser->content_lenght == 0){
+                return true;
+            }
             break;
         case RM_UNEXPECTED:
+            printf("unexpected\n");
+            *error = true;
             return true;
             break;
         default:
-
-            for (unsigned i = 0; i < e->n; i++){
-                printf("default: %c\n", e->data[i]);
-            }
             break;
     }
     return false;

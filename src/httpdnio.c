@@ -27,7 +27,7 @@
 /** obtiene el struct (httpd *) desde la llave de selección  */
 #define ATTACHMENT(key) ( (struct httpd *)(key)->data)
 
-
+#define WRITE_MESSAGE_EXTRA_SPACE 64
 
 static void httpd_read   (struct selector_key *key);
 static void httpd_write  (struct selector_key *key);
@@ -145,6 +145,8 @@ struct httpd {
     /* información del server origen */
     struct sockaddr_storage origin_addr;
     socklen_t origin_addr_len;
+    int origin_addr_type;
+
     int origin_fd;
 
     /* estados para el origin_fd */
@@ -353,9 +355,8 @@ static unsigned request_line_read(struct selector_key *key)
     bool error = false;
     size_t wbytes;
     uint8_t *read_buffer_ptr = buffer_write_ptr(b, &wbytes);
-    printf("wbytes = %ld\n", wbytes);
+ 
     ssize_t numBytesRead = recv(key->fd, read_buffer_ptr, wbytes,0);
-    printf("numBytesRead = %ld\n", numBytesRead);
     unsigned ret = REQUEST_LINE_READ;
     if (numBytesRead > 0)
     {
@@ -404,7 +405,7 @@ static unsigned request_line_process(struct request_line * rl,struct selector_ke
     unsigned ret = ERROR;
     struct sockaddr_in6 *addrV6;
     struct sockaddr_in *addrV4;
-
+    struct httpd *data = ATTACHMENT(key);
 
     switch (rl->request_target.host_type)
     {
@@ -412,12 +413,16 @@ static unsigned request_line_process(struct request_line * rl,struct selector_ke
         addrV6 = &rl->request_target.host.ipv6;
         addrV6->sin6_port = rl->request_target.port;
         addrV6->sin6_family = AF_INET6;
+        data->origin_addr_type = AF_INET6;
+        memcpy(&data->origin_addr, addrV6, sizeof(*addrV6));
         ret = connect_to_origin(AF_INET6, (const struct sockaddr *)addrV6, key);
         break;
     case ipv4_addr_t:
         addrV4 = &rl->request_target.host.ipv4;
         addrV4->sin_port = rl->request_target.port;
         addrV4->sin_family = AF_INET;
+        data->origin_addr_type = AF_INET6;
+        memcpy(&data->origin_addr, addrV4, sizeof(*addrV4));
         ret = connect_to_origin(AF_INET, (const struct sockaddr *)addrV4, key);
         break;
 
@@ -714,9 +719,9 @@ static unsigned request_message_read(struct selector_key* key){
     bool error = false;
     size_t wbytes;
     uint8_t *read_buffer_ptr = buffer_write_ptr(client_rb, &wbytes);
-    //printf("wbytes = %ld\n", wbytes);
+    printf("wbytes = %ld\n", wbytes);
     ssize_t numBytesRead = recv(key->fd, read_buffer_ptr, wbytes,0);
-    //printf("numBytesRead = %ld\n", numBytesRead);
+    printf("numBytesRead = %ld\n", numBytesRead);
     unsigned ret = REQUEST_MESSAGE;
 
     if (numBytesRead > 0)
@@ -747,29 +752,24 @@ finally:
     
 }
 
-static unsigned request_message_write(struct selector_key* key){
-      // printf("request message WRITE\n");
-    struct httpd *data = ATTACHMENT(key);
-    struct request_message_st *rm = &data->client.request_message;
-
-    buffer *client_rb = rm->rb;
-    bool error = false;
-    const struct parser_event *e;
-    struct request_message_parser* rm_parser =&rm->parser;
+static unsigned send_message(int read_fd,int write_fd,buffer*rb,request_message_parser * rm_parser,fd_selector s){
+     const struct parser_event *e;
+    //struct request_message_parser* rm_parser =&rm->parser;
 
     size_t rbytes;
   
-    uint8_t *write_buffer_ptr = buffer_read_ptr(client_rb, &rbytes);
-   // printf("rbytes %ld \n", rbytes);
+    uint8_t *write_buffer_ptr = buffer_read_ptr(rb, &rbytes);
+    printf("rbytes %ld \n", rbytes);
   
     unsigned ret = REQUEST_MESSAGE;
-    uint8_t write_buffer[rbytes];
+    uint8_t write_buffer[rbytes + WRITE_MESSAGE_EXTRA_SPACE];
    
     unsigned write_index = 0;
+    bool error = false;
     bool done = false;
-    while(buffer_can_read(client_rb)){
+    while(buffer_can_read(rb)){
       
-        uint8_t c = buffer_read(client_rb);
+        uint8_t c = buffer_read(rb);
         if(c == '\r'){
              printf("Leo \\r\n");
         }else if(c=='\n'){
@@ -778,106 +778,24 @@ static unsigned request_message_write(struct selector_key* key){
              printf("Leo %c\n",(char)c);
         }
        
- 
         e = parser_feed(rm_parser->rm_parser, c);
         do{
-            if(request_message_parser_process(e,rm_parser)){
-                error = true;
-                goto finally;
-            }
-            switch(e->type){
-                case RM_FIELD_NAME:
-                printf("RM_FIELD_NAME\n"); 
-                    
-                    break;
-                case RM_FIELD_NAME_END:
-                printf("RM_FIELD_NAME_END\n"); 
-                    if(rm_parser->current_detection == NULL || !(rm_parser->current_detection->interest & HEADER_IGNORE)){
-
-                        memcpy(write_buffer + write_index, rm_parser->current_name_storage, rm_parser->current_name_index);
-                        write_index += rm_parser->current_name_index;
-                        write_buffer[write_index++] = ':';
-                        write_buffer[write_index++] = ' ';
-                    }
-                  
-                    rm_parser->current_name_index = 0;
-                    
-                    
-                   
-                    break;
-                case RM_FIELD_VALUE:
-                printf("RM_FIELD_VALUE\n"); 
-                    if(rm_parser->current_detection == NULL || (rm_parser->current_detection->interest & HEADER_SEND)){
-                        for (unsigned i = 0; i < e->n;i++){
-                            write_buffer[write_index++] = e->data[i];
-                        }     
-                    
-                    }
-                
-                    break;
-                case RM_FIELD_VALUE_END:
-                    printf("RM_FIELD_VALUE_END\n");
-                        
-                        if(rm_parser->current_detection != NULL && (rm_parser->current_detection->interest & HEADER_REPLACE)){
-                            printf("entra remplace\n");
-                            struct header *current_detection = rm_parser->current_detection;
-                            printf("value index = %d\n", current_detection->value_index);
-                            printf("reemplazo %s\n", current_detection->value_storage);
-                            char replacement_c = current_detection->value_storage[current_detection->value_index++];
-
-                            while(replacement_c != '\0'){
-                                printf("reemplazo %c\n", replacement_c);
-                                write_buffer[write_index++] = replacement_c;
-                                replacement_c = current_detection->value_storage[current_detection->value_index++];
-                            }
-                        
-                            rm_parser->current_detection->value_index = 0;
-                        } 
-                        if(rm_parser->current_detection == NULL || !(rm_parser->current_detection->interest & HEADER_IGNORE)){
-                            write_buffer[write_index++] = '\r';
-                            write_buffer[write_index++] = '\n';
-                        }
-                       
-                        if(e->next == NULL){
-                            printf("SET CURRENT DETECTION = NULL\n");
-                            rm_parser->current_detection = NULL;
-                        }
-                        break;
-                case RM_BODY_START:
-                     for (unsigned i = 0; i < e->n;i++){
-                        write_buffer[write_index++] = e->data[i];
-                       
-                    }
-                    break;
-                case RM_BODY:
-                printf("RM_BODY\n"); 
-                   
-                    for (unsigned i = 0; i < e->n;i++){
-                        if(rm_parser->content_lenght > 0){
-                            write_buffer[write_index++] = e->data[i];
-                            rm_parser->content_lenght--;
-                        }else{
-                            break;
-                        }
-                       
-                    }
-                    if(rm_parser->content_lenght == 0){
-                        done = true;
-                    } 
-                    break;
-                case RM_UNEXPECTED:
-                    error = true;
+            done = request_message_parser_process(e,rm_parser,write_buffer,&write_index,&error);
+            if(done){
+                if(error){
                     goto finally;
-                    break;
+                }
+                break;
             }
-
+            
             e = e->next;
         } while (e != NULL && !done);
+    
     }
 
           if(write_index > 0){
                
-                ssize_t numBytesWritten = send(key->fd, write_buffer, write_index,MSG_NOSIGNAL);
+                ssize_t numBytesWritten = send(write_fd, write_buffer, write_index,MSG_NOSIGNAL);
               
                 if(numBytesWritten < 0){
                     ret = ERROR; 
@@ -886,23 +804,23 @@ static unsigned request_message_write(struct selector_key* key){
                 if(numBytesWritten < write_index){
                     // si se envió menos de lo que parseé, debo escribir lo que parseé demás devuelta en el buffer
                     for (unsigned i = 0; i < numBytesWritten; i++){
-                        buffer_write(client_rb, write_buffer[i]);
+                        buffer_write(rb, write_buffer[i]);
                     }
                     
-                    buffer_write_adv(client_rb, numBytesWritten);
+                    buffer_write_adv(rb, numBytesWritten);
                 }
             }
             if(!done){
-                if(buffer_can_write(client_rb)){   
-                    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
+                if(buffer_can_write(rb)){   
+                    if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_READ))
                     {
                         error = true;
                         goto finally;
                     }
 
                 }
-                if(!buffer_can_read(client_rb)){   
-                    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
+                if(!buffer_can_read(rb)){   
+                    if (SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP))
                     {
                         error = true;
                         goto finally;
@@ -910,12 +828,12 @@ static unsigned request_message_write(struct selector_key* key){
                 }
             }else{
                 ret = DONE;
-                    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
+                    if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
                     {
                         error = true;
                         goto finally;
                     }
-                    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
+                    if (SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP))
                     {
                         error = true;
                         goto finally;
@@ -926,8 +844,16 @@ static unsigned request_message_write(struct selector_key* key){
            
 finally:
     return error ? ERROR : ret;
+}
 
-    
+static unsigned request_message_write(struct selector_key* key){
+      // printf("request message WRITE\n");
+    struct httpd *data = ATTACHMENT(key);
+    struct request_message_st *rm = &data->client.request_message;
+
+    buffer *client_rb = rm->rb;
+    return send_message(data->client_fd,data->origin_fd, client_rb, &rm->parser,key->s);
+   
 }
 
 ////////////////////////////////////////////////////////////////////////////////
