@@ -1,5 +1,6 @@
 #include "../include/httpdnio.h"
 #include "../include/request_line.h"
+#include "../include/request_message.h"
 #include "../include/stm.h"
 #include "../include/buffer.h"
 #include "../include/netutils.h"
@@ -45,12 +46,20 @@ static void request_line_write_init(const unsigned state,struct selector_key *ke
 static unsigned request_line_write(struct selector_key *key);
 static void request_line_write_on_departure(const unsigned state, struct selector_key *key);
 
+<<<<<<< HEAD
 static void response_line_read_init(const unsigned state,struct selector_key *key);
 static unsigned response_line_read(struct selector_key *key);
 
 static void response_line_write_init(const unsigned state,struct selector_key *key);
 static void response_line_write_on_departure(const unsigned state,struct selector_key *key);
 static unsigned response_line_write(struct selector_key *key);
+=======
+
+static void request_message_init(const unsigned state, struct selector_key *key);
+static unsigned request_message_write(struct selector_key *key);
+static unsigned request_message_read(struct selector_key *key);
+
+>>>>>>> bitbucket/master
 
 static void copy_init(const unsigned state,struct selector_key *key);
 static unsigned copy_read(struct selector_key *key);
@@ -63,8 +72,13 @@ enum httpd_state {
     REQUEST_LINE_READ,
     CONNECTING,
     REQUEST_LINE_WRITE,
+<<<<<<< HEAD
     RESPONSE_LINE_READ,
     RESPONSE_LINE_WRITE,
+=======
+    REQUEST_MESSAGE,
+    
+>>>>>>> bitbucket/master
     COPY,
     // estados terminales
     DONE,
@@ -95,6 +109,7 @@ struct request_line_st{
     buffer rl_to_send_buffer;
 };
 
+<<<<<<< HEAD
 struct response_line_st{
     buffer *rb;
 
@@ -104,6 +119,12 @@ struct response_line_st{
     unsigned rl_to_send_len;
     unsigned rl_to_send_written;
     buffer rl_to_send_buffer;
+=======
+struct request_message_st{
+    buffer * rb;
+    struct request_message_parser parser;
+
+>>>>>>> bitbucket/master
 };
 
 
@@ -143,7 +164,11 @@ struct httpd {
     /* estados para el client_fd */
     union {
         struct request_line_st request_line;
+<<<<<<< HEAD
         struct response_line_st response_line;
+=======
+        struct request_message_st request_message;
+>>>>>>> bitbucket/master
         struct copy_st copy;
     } client;
 
@@ -175,6 +200,12 @@ static const struct state_definition client_statbl[] = {
      .on_arrival = request_line_write_init,
      .on_write_ready = request_line_write,
      .on_departure = request_line_write_on_departure
+     },
+    {.state = REQUEST_MESSAGE,
+     .on_arrival = request_message_init,
+     .on_read_ready = request_message_read,
+     .on_write_ready = request_message_write
+
      },
     {
         .state = RESPONSE_LINE_READ,
@@ -563,46 +594,6 @@ finally:
 ////////////////////////////////////////////////////////////////////////////////
 
 
-static unsigned read_request_line(struct request_line_st* rl,fd_selector s,int origin_fd){
-    printf("read_request_line\n");
-    buffer *b = &rl->rl_to_send_buffer;
- 
-    printf("buffer to send\n");
-    print_buffer(b);
-    size_t wbytes;
-    unsigned ret = REQUEST_LINE_WRITE;
-    bool error = false;
-    /* quiero escribir en el read buffer de client para que lo lea el origin */
-    uint8_t *read_buffer_ptr = buffer_write_ptr(b, &wbytes);
-    printf("wbytes = %ld\n", wbytes);
-    if(wbytes == 0){
-        printf("wbytes es 0 abort\n");
-        error = true;
-        goto finally;
-    }
-
-    int n = snprintf((char*)read_buffer_ptr, wbytes, (char*)rl->rl_to_send);
-    
-    printf("escribi %d bytes de la request line\n", n);
-    if(n < 0){
-         error = true;
-        goto finally;
-    }
-  
-    //rl->rl_to_send_read += n;
-    printf("request_line_to_send = %s\n",(char*) rl->rl_to_send);
-   /* if(rl->rl_to_send_read == rl->rl_to_send_len){
-        printf("ya lei toda la request line\n");
-    }*/
-    if (SELECTOR_SUCCESS != selector_set_interest(s,origin_fd, OP_WRITE))
-    {
-        error = true;
-        goto finally;
-    }
-finally:
-    return error ? ERROR : ret;
-}
-
 
 
 static void request_line_write_init(const unsigned state,struct selector_key *key){
@@ -617,7 +608,7 @@ static void request_line_write_init(const unsigned state,struct selector_key *ke
     printf("len method %ld\n", method_len);
     size_t origin_form_len = strlen((char*)rl->request_line_data.request_target.origin_form);
     printf("origin_form_len method %ld\n", origin_form_len);
-    rl->rl_to_send_len = method_len + origin_form_len + 13;
+    rl->rl_to_send_len = method_len + origin_form_len + 12;
     rl->rl_to_send = (uint8_t*)malloc( rl->rl_to_send_len);
  
    
@@ -626,7 +617,7 @@ static void request_line_write_init(const unsigned state,struct selector_key *ke
     if(-1 == sprintf((char*)rl->rl_to_send,"%s %s HTTP/%d.%d\r\n",(char*)rl->request_line_data.method,(char*)rl->request_line_data.request_target.origin_form,1,0)){
         abort();
     }
-    rl->rl_to_send[rl->rl_to_send_len - 1] = '\0';
+    rl->rl_to_send[rl->rl_to_send_len] = '\0';
     printf("request_line_to_send: %s\ntotal_len %d\n", rl->rl_to_send,rl->rl_to_send_len);
     buffer *b = &rl->rl_to_send_buffer;
     buffer_init(b, rl->rl_to_send_len,rl->rl_to_send);
@@ -680,18 +671,22 @@ static unsigned request_line_write(struct selector_key *key){
         bool finished_writting = rl->rl_to_send_written >= rl->rl_to_send_len;
         if(finished_writting){
             printf("termine de escribir la primera linea \n");
-            if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
             {
                 error = true;
                 goto finally;
             }
 
-            if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_READ))
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
             {
                 error = true;
                 goto finally;
             }
+<<<<<<< HEAD
             ret = RESPONSE_LINE_READ;
+=======
+            ret = REQUEST_MESSAGE;
+>>>>>>> bitbucket/master
         }else if(!finished_writting && can_read){
             printf("no termine de escribir y puedo seguir leyendo\n");
             // no termine de enviar al origin server toda la request line y puedo seguir leyendo del buffer
@@ -866,12 +861,272 @@ static unsigned response_line_write(struct selector_key *key){
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// REQUEST MESSAGE WRITE
+// REQUEST MESSAGE
 ////////////////////////////////////////////////////////////////////////////////
 
+void host_on_value_end(struct request_message_parser* parser){
+    assert(parser != NULL && parser->current_detection != NULL);
+    printf("Host: %s\n", parser->current_detection->value_storage);
+}
+
+void content_length_on_value_end(struct request_message_parser* parser){
+    assert(parser != NULL && parser->current_detection != NULL);
+    parser->content_lenght = atoi((char*)parser->current_detection->value_storage);
+    printf("CONTENT LENGTH = %d\n", parser->content_lenght);
+}
+
+void connection_on_value_end(struct request_message_parser* parser){
+    assert(parser != NULL && parser->current_detection != NULL);
+    printf("CONNECTION ON VALUE END\n");
+}
+
 static void request_message_init(const unsigned state,struct selector_key *key){
+    printf("request message init\n");
     struct httpd *data = ATTACHMENT(key);
-    struct copy_st *copy = &data->client.copy;
+    struct request_message_st *rm = &data->client.request_message;
+    rm->rb = &data->from_origin_buffer;
+    request_message_parser_init(&rm->parser,3);
+    add_header(&rm->parser, "Host", HEADER_REPLACE,"reemplazo.com.ar", host_on_value_end);
+    add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
+    add_header(&rm->parser, "Connection", HEADER_IGNORE,NULL, connection_on_value_end);
+    
+    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
+    {
+            abort();
+    }
+    if(buffer_can_read(rm->rb)){
+        printf("buffer can read\n");
+        // ademas de la request line, se escribieron headers y/o body en el buffer de lectura del cliente
+        if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_WRITE))
+        {
+            abort();
+        }
+    }
+}
+
+
+static unsigned request_message_read(struct selector_key* key){
+       //printf("request message READ\n");
+    struct httpd *data = ATTACHMENT(key);
+    struct request_message_st *rm = &data->client.request_message;
+    buffer * client_rb = rm->rb;
+    bool error = false;
+    size_t wbytes;
+    uint8_t *read_buffer_ptr = buffer_write_ptr(client_rb, &wbytes);
+    //printf("wbytes = %ld\n", wbytes);
+    ssize_t numBytesRead = recv(key->fd, read_buffer_ptr, wbytes,0);
+    //printf("numBytesRead = %ld\n", numBytesRead);
+    unsigned ret = REQUEST_MESSAGE;
+
+    if (numBytesRead > 0)
+    {
+        buffer_write_adv(client_rb, numBytesRead);
+        if(!buffer_can_write(client_rb)){
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
+            {
+                error = true;
+                goto finally;
+            }
+        }
+        if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_WRITE))
+        {
+            error = true;
+            goto finally;
+        }
+    }      
+    else
+    {
+        error = true;
+       
+    }
+ 
+finally:
+    return error ? ERROR : ret;
+
+    
+}
+
+static unsigned request_message_write(struct selector_key* key){
+      // printf("request message WRITE\n");
+    struct httpd *data = ATTACHMENT(key);
+    struct request_message_st *rm = &data->client.request_message;
+
+    buffer *client_rb = rm->rb;
+    bool error = false;
+    const struct parser_event *e;
+    struct request_message_parser* rm_parser =&rm->parser;
+
+    size_t rbytes;
+  
+    uint8_t *write_buffer_ptr = buffer_read_ptr(client_rb, &rbytes);
+   // printf("rbytes %ld \n", rbytes);
+  
+    unsigned ret = REQUEST_MESSAGE;
+    uint8_t write_buffer[rbytes];
+   
+    unsigned write_index = 0;
+    bool done = false;
+    while(buffer_can_read(client_rb)){
+      
+        uint8_t c = buffer_read(client_rb);
+        if(c == '\r'){
+             printf("Leo \\r\n");
+        }else if(c=='\n'){
+             printf("Leo \\n\n");
+        }else{
+             printf("Leo %c\n",(char)c);
+        }
+       
+ 
+        e = parser_feed(rm_parser->rm_parser, c);
+        do{
+            if(request_message_parser_process(e,rm_parser)){
+                error = true;
+                goto finally;
+            }
+            switch(e->type){
+                case RM_FIELD_NAME:
+                printf("RM_FIELD_NAME\n"); 
+                    
+                    break;
+                case RM_FIELD_NAME_END:
+                printf("RM_FIELD_NAME_END\n"); 
+                    if(rm_parser->current_detection == NULL || !(rm_parser->current_detection->interest & HEADER_IGNORE)){
+
+                        memcpy(write_buffer + write_index, rm_parser->current_name_storage, rm_parser->current_name_index);
+                        write_index += rm_parser->current_name_index;
+                        write_buffer[write_index++] = ':';
+                        write_buffer[write_index++] = ' ';
+                    }
+                  
+                    rm_parser->current_name_index = 0;
+                    
+                    
+                   
+                    break;
+                case RM_FIELD_VALUE:
+                printf("RM_FIELD_VALUE\n"); 
+                    if(rm_parser->current_detection == NULL || (rm_parser->current_detection->interest & HEADER_SEND)){
+                        for (unsigned i = 0; i < e->n;i++){
+                            write_buffer[write_index++] = e->data[i];
+                        }     
+                    
+                    }
+                
+                    break;
+                case RM_FIELD_VALUE_END:
+                    printf("RM_FIELD_VALUE_END\n");
+                        
+                        if(rm_parser->current_detection != NULL && (rm_parser->current_detection->interest & HEADER_REPLACE)){
+                            printf("entra remplace\n");
+                            struct header *current_detection = rm_parser->current_detection;
+                            printf("value index = %d\n", current_detection->value_index);
+                            printf("reemplazo %s\n", current_detection->value_storage);
+                            char replacement_c = current_detection->value_storage[current_detection->value_index++];
+
+                            while(replacement_c != '\0'){
+                                printf("reemplazo %c\n", replacement_c);
+                                write_buffer[write_index++] = replacement_c;
+                                replacement_c = current_detection->value_storage[current_detection->value_index++];
+                            }
+                        
+                            rm_parser->current_detection->value_index = 0;
+                        } 
+                        if(rm_parser->current_detection == NULL || !(rm_parser->current_detection->interest & HEADER_IGNORE)){
+                            write_buffer[write_index++] = '\r';
+                            write_buffer[write_index++] = '\n';
+                        }
+                       
+                        if(e->next == NULL){
+                            printf("SET CURRENT DETECTION = NULL\n");
+                            rm_parser->current_detection = NULL;
+                        }
+                        break;
+                case RM_BODY_START:
+                     for (unsigned i = 0; i < e->n;i++){
+                        write_buffer[write_index++] = e->data[i];
+                       
+                    }
+                    break;
+                case RM_BODY:
+                printf("RM_BODY\n"); 
+                   
+                    for (unsigned i = 0; i < e->n;i++){
+                        if(rm_parser->content_lenght > 0){
+                            write_buffer[write_index++] = e->data[i];
+                            rm_parser->content_lenght--;
+                        }else{
+                            break;
+                        }
+                       
+                    }
+                    if(rm_parser->content_lenght == 0){
+                        done = true;
+                    } 
+                    break;
+                case RM_UNEXPECTED:
+                    error = true;
+                    goto finally;
+                    break;
+            }
+
+            e = e->next;
+        } while (e != NULL && !done);
+    }
+
+          if(write_index > 0){
+               
+                ssize_t numBytesWritten = send(key->fd, write_buffer, write_index,MSG_NOSIGNAL);
+              
+                if(numBytesWritten < 0){
+                    ret = ERROR; 
+                    goto finally;
+                }
+                if(numBytesWritten < write_index){
+                    // si se envió menos de lo que parseé, debo escribir lo que parseé demás devuelta en el buffer
+                    for (unsigned i = 0; i < numBytesWritten; i++){
+                        buffer_write(client_rb, write_buffer[i]);
+                    }
+                    
+                    buffer_write_adv(client_rb, numBytesWritten);
+                }
+            }
+            if(!done){
+                if(buffer_can_write(client_rb)){   
+                    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
+                    {
+                        error = true;
+                        goto finally;
+                    }
+
+                }
+                if(!buffer_can_read(client_rb)){   
+                    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
+                    {
+                        error = true;
+                        goto finally;
+                    }
+                }
+            }else{
+                ret = DONE;
+                    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
+                    {
+                        error = true;
+                        goto finally;
+                    }
+                    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
+                    {
+                        error = true;
+                        goto finally;
+                    }
+            }
+          
+      
+           
+finally:
+    return error ? ERROR : ret;
+
+    
 }
 
 ////////////////////////////////////////////////////////////////////////////////
