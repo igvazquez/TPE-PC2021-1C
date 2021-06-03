@@ -52,7 +52,6 @@ enum response_line_event_type
     RS_CODE,
     RS_CODE_END,
     RS_STATUS_MESSAGE,
-    RS_STATUS_MESSAGE_END,
     RS_WAIT,
     RS_DONE,
     RS_UNEXPECTED
