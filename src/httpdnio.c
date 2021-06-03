@@ -46,20 +46,16 @@ static void request_line_write_init(const unsigned state,struct selector_key *ke
 static unsigned request_line_write(struct selector_key *key);
 static void request_line_write_on_departure(const unsigned state, struct selector_key *key);
 
-<<<<<<< HEAD
 static void response_line_read_init(const unsigned state,struct selector_key *key);
 static unsigned response_line_read(struct selector_key *key);
 
 static void response_line_write_init(const unsigned state,struct selector_key *key);
 static void response_line_write_on_departure(const unsigned state,struct selector_key *key);
 static unsigned response_line_write(struct selector_key *key);
-=======
 
 static void request_message_init(const unsigned state, struct selector_key *key);
 static unsigned request_message_write(struct selector_key *key);
 static unsigned request_message_read(struct selector_key *key);
-
->>>>>>> bitbucket/master
 
 static void copy_init(const unsigned state,struct selector_key *key);
 static unsigned copy_read(struct selector_key *key);
@@ -72,13 +68,9 @@ enum httpd_state {
     REQUEST_LINE_READ,
     CONNECTING,
     REQUEST_LINE_WRITE,
-<<<<<<< HEAD
+    REQUEST_MESSAGE,
     RESPONSE_LINE_READ,
     RESPONSE_LINE_WRITE,
-=======
-    REQUEST_MESSAGE,
-    
->>>>>>> bitbucket/master
     COPY,
     // estados terminales
     DONE,
@@ -109,22 +101,20 @@ struct request_line_st{
     buffer rl_to_send_buffer;
 };
 
-<<<<<<< HEAD
-struct response_line_st{
+struct response_line_st {
     buffer *rb;
 
     struct response_line response_line_data;
     struct response_line_parser parser;
-    uint8_t * rl_to_send;
+    uint8_t *rl_to_send;
     unsigned rl_to_send_len;
     unsigned rl_to_send_written;
     buffer rl_to_send_buffer;
-=======
+};
+
 struct request_message_st{
     buffer * rb;
     struct request_message_parser parser;
-
->>>>>>> bitbucket/master
 };
 
 
@@ -164,11 +154,8 @@ struct httpd {
     /* estados para el client_fd */
     union {
         struct request_line_st request_line;
-<<<<<<< HEAD
         struct response_line_st response_line;
-=======
         struct request_message_st request_message;
->>>>>>> bitbucket/master
         struct copy_st copy;
     } client;
 
@@ -682,11 +669,7 @@ static unsigned request_line_write(struct selector_key *key){
                 error = true;
                 goto finally;
             }
-<<<<<<< HEAD
-            ret = RESPONSE_LINE_READ;
-=======
             ret = REQUEST_MESSAGE;
->>>>>>> bitbucket/master
         }else if(!finished_writting && can_read){
             printf("no termine de escribir y puedo seguir leyendo\n");
             // no termine de enviar al origin server toda la request line y puedo seguir leyendo del buffer
@@ -718,13 +701,21 @@ static void response_line_read_init(const unsigned state,struct selector_key *ke
     struct response_line_st* rl = &(data->client.response_line);
     response_line_parser_init(&(rl->parser));
     rl->parser.response_line = &(data->client.response_line.response_line_data);
+    rl->parser.response_line->code_counter = 0;
+    rl->parser.response_line->message_counter = 0;
     rl->rb = &(data->from_origin_buffer);
+
+    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_READ))
+    {
+        abort();
+    }
 }
 
 static unsigned response_line_read(struct selector_key *key)
 {
     printf("response_line_read\n");
     struct response_line_st* rl = &(ATTACHMENT(key)->client.response_line);
+    struct httpd *data = ATTACHMENT(key);
 
     buffer *b = rl->rb;
     bool error = false;
@@ -747,6 +738,10 @@ static unsigned response_line_read(struct selector_key *key)
                 printf("message: %s\n", rl->response_line_data.status_message);
                 printf("version %d.%d\n", rl->response_line_data.version_major, rl->response_line_data.version_minor);
                 ret = RESPONSE_LINE_WRITE;
+                if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
+                {
+                    abort();
+                }
             }
         }
     }
@@ -1108,7 +1103,7 @@ static unsigned request_message_write(struct selector_key* key){
                     }
                 }
             }else{
-                ret = DONE;
+                ret = RESPONSE_LINE_READ;
                     if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
                     {
                         error = true;
