@@ -766,6 +766,7 @@ static unsigned request_message_write(struct selector_key* key){
     uint8_t write_buffer[rbytes];
    
     unsigned write_index = 0;
+    bool done = false;
     while(buffer_can_read(client_rb)){
       
         uint8_t c = buffer_read(client_rb);
@@ -792,8 +793,7 @@ static unsigned request_message_write(struct selector_key* key){
                 case RM_FIELD_NAME_END:
                 printf("RM_FIELD_NAME_END\n"); 
                     if(rm_parser->current_detection == NULL || !(rm_parser->current_detection->interest & HEADER_IGNORE)){
-                        printf("detecte header\n");
-                        printf("name len: %d\n", rm_parser->current_name_index);
+
                         memcpy(write_buffer + write_index, rm_parser->current_name_storage, rm_parser->current_name_index);
                         write_index += rm_parser->current_name_index;
                         write_buffer[write_index++] = ':';
@@ -844,10 +844,25 @@ static unsigned request_message_write(struct selector_key* key){
                         }
                         break;
                 case RM_BODY_START:
+                     for (unsigned i = 0; i < e->n;i++){
+                        write_buffer[write_index++] = e->data[i];
+                       
+                    }
+                    break;
                 case RM_BODY:
                 printf("RM_BODY\n"); 
+                   
                     for (unsigned i = 0; i < e->n;i++){
-                        write_buffer[write_index++] = e->data[i];
+                        if(rm_parser->content_lenght > 0){
+                            write_buffer[write_index++] = e->data[i];
+                            rm_parser->content_lenght--;
+                        }else{
+                            break;
+                        }
+                       
+                    }
+                    if(rm_parser->content_lenght == 0){
+                        done = true;
                     } 
                     break;
                 case RM_UNEXPECTED:
@@ -857,7 +872,7 @@ static unsigned request_message_write(struct selector_key* key){
             }
 
             e = e->next;
-        } while (e != NULL);
+        } while (e != NULL && !done);
     }
 
           if(write_index > 0){
@@ -865,7 +880,7 @@ static unsigned request_message_write(struct selector_key* key){
                 ssize_t numBytesWritten = send(key->fd, write_buffer, write_index,MSG_NOSIGNAL);
               
                 if(numBytesWritten < 0){
-                    error = true;
+                    ret = ERROR; 
                     goto finally;
                 }
                 if(numBytesWritten < write_index){
@@ -877,22 +892,36 @@ static unsigned request_message_write(struct selector_key* key){
                     buffer_write_adv(client_rb, numBytesWritten);
                 }
             }
+            if(!done){
+                if(buffer_can_write(client_rb)){   
+                    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
+                    {
+                        error = true;
+                        goto finally;
+                    }
 
-            if(buffer_can_write(client_rb)){   
-                if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
-                {
-                    error = true;
-                    goto finally;
                 }
-
-            }
-            if(!buffer_can_read(client_rb)){   
-                if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
-                {
-                    error = true;
-                    goto finally;
+                if(!buffer_can_read(client_rb)){   
+                    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
+                    {
+                        error = true;
+                        goto finally;
+                    }
                 }
+            }else{
+                ret = DONE;
+                    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
+                    {
+                        error = true;
+                        goto finally;
+                    }
+                    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
+                    {
+                        error = true;
+                        goto finally;
+                    }
             }
+          
       
            
 finally:

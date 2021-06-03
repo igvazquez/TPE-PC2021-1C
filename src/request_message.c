@@ -198,10 +198,10 @@ void header_parsers_feed(const struct parser_event* incoming,struct request_mess
  
         h = parser->headers_to_detect + i;
       
-    
-        if (h->detected == 0 || *h->detected)
+        if (h->detected == NULL || *h->detected == true)
         {
-          
+              printf("PRUEBO HEADER: %d\n", i);
+
             // si es la primera vez o ya dió detected = true (puede que el header name siga y lo vuelva false)
             for(unsigned j = 0; j< n; j++){
                 e = parser_feed(h->name_parser,incoming->data[j]);
@@ -212,11 +212,13 @@ void header_parsers_feed(const struct parser_event* incoming,struct request_mess
                         case STRING_CMP_EQ:
                             h->detected = &T;
                             detected = h;
-
+                            printf("detecte header\n");
+                            printf("name len: %d\n", parser->current_name_index);
                             break;
                         case STRING_CMP_NEQ:
                             h->detected = &F;
                             parser->mismatch_counter++;
+                            printf("not equals header %d\n",parser->mismatch_counter);
                             break;
                     }
                     e = e->next;
@@ -242,7 +244,7 @@ static void header_parsers_reset(struct request_message_parser* parser){
         h->detected = NULL;
         h->value_index = 0;
     }
-
+    parser->mismatch_counter = 0;
 }
 
 
@@ -268,6 +270,7 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
         case RM_FIELD_NAME_END:
            //  printf("field name end\n");
             header_parsers_reset(parser);
+            printf("PARSERS RESET\n");
             break;
         case RM_FIELD_VALUE:
          //printf("field value\n");
@@ -375,7 +378,7 @@ void add_header(struct request_message_parser *parser, char *header_name,header_
     if(replacement != NULL){
         memcpy(h->value_storage, replacement, MAX_HEADER_VALUE_LENGTH);
     }
-    printf("header init storage: %s\n ", h->value_storage);
+
 }
 void request_message_parser_reset(struct request_message_parser *parser){
     header_parsers_reset(parser);

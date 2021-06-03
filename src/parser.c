@@ -70,7 +70,7 @@ parser_feed(struct parser *p, const uint8_t c) {
             break;
         }
     }
-    printf("parser feed termina\n");
+  
     return &p->e1;
 }
 
