@@ -398,7 +398,8 @@ static unsigned request_line_process(struct request_line *rl, struct selector_ke
 static unsigned request_line_read(struct selector_key *key)
 {
      printf("request_line_read\n");
-    struct request_line_st* rl = &(ATTACHMENT(key)->client.request_line);
+    struct httpd *data = ATTACHMENT(key);
+    struct request_line_st* rl = &data->client.request_line;
 
     buffer *b = rl->rb;
     bool error = false;
@@ -435,6 +436,12 @@ static unsigned request_line_read(struct selector_key *key)
                 printf("origin form: %s\n", rl->parser.parsed_info.origin_form_buffer);
                 //request_line_parser_reset(&rl->parser);
 
+                if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->client_fd, OP_NOOP))
+                {
+                    error = true;
+                    goto finally;
+                }
+
                 //proceso la request line
                 ret = request_line_process(&rl->request_line_data,key);
             }
@@ -447,6 +454,7 @@ static unsigned request_line_read(struct selector_key *key)
         ret = ERROR;
     }
 
+finally:
     return error ? ERROR : ret;
 }
 
