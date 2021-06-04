@@ -426,10 +426,12 @@ void add_header(struct request_message_parser *parser, char *header_name,header_
     h->detected = NULL;
     if(replacement != NULL){
         memcpy(h->value_storage, replacement, MAX_HEADER_VALUE_LENGTH);
+        free((char*)replacement);
     }
 
 }
 void request_message_parser_reset(struct request_message_parser *parser){
+    assert(parser != NULL);
     header_parsers_reset(parser);
     parser->mismatch_counter = 0;
     parser->current_detection = NULL;
@@ -438,15 +440,29 @@ void request_message_parser_reset(struct request_message_parser *parser){
 }
 
 void request_message_parser_destroy(struct request_message_parser *parser){
-  
+    assert(parser != NULL);
     unsigned header_quantity = parser->header_quantity;
     struct header h;
     for (unsigned i = 0; i < header_quantity; i++)
     {
         h = parser->headers_to_detect[i];
         parser_utils_strcmpi_destroy(h.name_parser->def);
+     
         parser_destroy(h.name_parser);
     }
     free(parser->headers_to_detect);
         
+}
+
+char *get_detection_value(struct request_message_parser *parser){
+    assert(parser != NULL);
+    if(parser->current_detection != NULL){
+        return (char*)parser->current_detection->value_storage;
+    }else{
+        return NULL;
+    }
+}
+void set_content_length(struct request_message_parser *parser, long content_length){
+    assert(parser != NULL && content_length >= 0);
+    parser->content_lenght = content_length;
 }

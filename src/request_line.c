@@ -232,9 +232,9 @@ static const struct parser_state_transition ST_SCHEME6[] =  {
 };
 
 static const struct parser_state_transition ST_HOST0[] =  {
+    {.when = '[',        .dest = IPV60,         .act1 = ipv6_0,},
     {.when = TOKEN_UNRESERVED,        .dest = FQDN_OR_IPV4,         .act1 = host,},
     {.when = TOKEN_SUB_DELIMS,        .dest = FQDN_OR_IPV4,         .act1 = host,},
-    {.when = '[',        .dest = IPV60,         .act1 = ipv6_0,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
@@ -351,18 +351,22 @@ static const struct parser_state_transition ST_FRAGMENT[] =  {
 
 static const struct parser_state_transition ST_HTTP_VERSION_NAME0[] =  {
     {.when = 'H',        .dest = HTTP_VERSION_NAME1,         .act1 = http_name,},
+    {.when = 'h',        .dest = HTTP_VERSION_NAME1,         .act1 = http_name,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 static const struct parser_state_transition ST_HTTP_VERSION_NAME1[] =  {
     {.when = 'T',        .dest = HTTP_VERSION_NAME2,         .act1 = http_name,},
+    {.when = 't',        .dest = HTTP_VERSION_NAME2,         .act1 = http_name,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 static const struct parser_state_transition ST_HTTP_VERSION_NAME2[] =  {
     {.when = 'T',        .dest = HTTP_VERSION_NAME3,         .act1 = http_name,},
+    {.when = 't',        .dest = HTTP_VERSION_NAME3,         .act1 = http_name,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 static const struct parser_state_transition ST_HTTP_VERSION_NAME3[] =  {
     {.when = 'P',        .dest = HTTP_VERSION_NAME4,         .act1 = http_name,},
+    {.when = 'p',        .dest = HTTP_VERSION_NAME4,         .act1 = http_name,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 static const struct parser_state_transition ST_HTTP_VERSION_NAME4[] =  {
@@ -556,6 +560,7 @@ static bool process_event(const struct parser_event * e,request_line_parser *par
         parsed_info->port += (e->data[0] - '0');
         break;
     case RL_IPV6_0:
+        printf("IPV6 0\n");
         parsed_info->host_type = ipv6_addr;
         break;
     case RL_IPV6:
@@ -571,6 +576,7 @@ static bool process_event(const struct parser_event * e,request_line_parser *par
     case RL_ORIGIN_FORM_END:
         if(parsed_info->origin_form_counter > MAX_ORIGIN_FORM)
             return true;
+
         parsed_info->origin_form_buffer[parsed_info->origin_form_counter] =  '\0';
         break;
     case RL_HTTP_VERSION_MAJOR:
@@ -578,6 +584,13 @@ static bool process_event(const struct parser_event * e,request_line_parser *par
         break;
     case RL_HTTP_VERSION_MINOR:
         parsed_info->version_minor = e->data[0] - '0';  
+        break;
+    case RL_DONE:
+        if(parsed_info->origin_form_counter == 0){
+            printf("RL DONE\n");
+            parsed_info->origin_form_buffer[parsed_info->origin_form_counter++] =  '/';
+            parsed_info->origin_form_buffer[parsed_info->origin_form_counter] =  '\0';
+        }
         break;
     case RL_WAIT:
         // nada
@@ -598,7 +611,7 @@ static void fill_request_line_data(struct request_line_parser * parser,bool *err
         case ipv6_addr:
            
             printf("Probando si ipv6: %s es valida\n", pi.host.ipv6_buffer);
-            if((i6pton_ret=inet_pton(AF_INET6,pi.host.ipv6_buffer,&(rl->request_target.host.ipv6))) == 1){
+            if((i6pton_ret=inet_pton(AF_INET6,pi.host.ipv6_buffer,&(rl->request_target.host.ipv6.sin6_addr))) == 1){
                 // La ip ingresada es ipv6
                 rl->request_target.host_type = ipv6_addr_t;
             }else if(i6pton_ret <= 0){
@@ -612,7 +625,7 @@ static void fill_request_line_data(struct request_line_parser * parser,bool *err
         case domain_or_ipv4_addr:
             
             printf("Probando si ipv4: %s es valida\n", pi.host.domain_or_ipv4_buffer);
-            if((i4pton_ret=inet_pton(AF_INET,pi.host.domain_or_ipv4_buffer,&(rl->request_target.host.ipv4))) == 1){
+            if((i4pton_ret=inet_pton(AF_INET,pi.host.domain_or_ipv4_buffer,&(rl->request_target.host.ipv4.sin_addr))) == 1){
                     // La ip ingresada es ipv6
                 rl->request_target.host_type = ipv4_addr_t;
             }else if(i4pton_ret == 0){
@@ -684,6 +697,10 @@ bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, bo
         e = parser_feed(parser->rl_parser, c);
         printf("Estado: %d\n", e->type);
         do{
+            if((*error = process_event(e,parser))){
+                //dio error
+                return true;
+            }
             if (request_line_is_done(e->type, error))
             {
                 printf("request message done - error: %d\n", *error);
@@ -692,10 +709,7 @@ bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, bo
                 }
                 return true;
             }
-            if((*error = process_event(e,parser))){
-                //dio error
-                return true;
-            }
+          
             e = e->next;
         } while (e != NULL);
     }

@@ -43,6 +43,8 @@ static unsigned connecting_done(struct selector_key *key);
 static void request_line_read_init(const unsigned state,struct selector_key *key);
 static unsigned request_line_read(struct selector_key *key);
 
+static unsigned request_resolve_done(struct selector_key *key);
+
 static void request_line_write_init(const unsigned state,struct selector_key *key);
 static unsigned request_line_write(struct selector_key *key);
 static void request_line_write_on_departure(const unsigned state, struct selector_key *key);
@@ -57,10 +59,12 @@ static unsigned response_line_write(struct selector_key *key);
 static void request_message_init(const unsigned state, struct selector_key *key);
 static unsigned request_message_write(struct selector_key *key);
 static unsigned request_message_read(struct selector_key *key);
+static void request_message_on_departure(const unsigned state, struct selector_key *key);
 
 static void response_message_init(const unsigned state,struct selector_key *key);
 static unsigned response_message_read(struct selector_key* key);
 static unsigned response_message_write(struct selector_key* key);
+static void response_message_on_departure(const unsigned state, struct selector_key *key);
 
 static void error_init(const unsigned state,struct selector_key * key);
 static unsigned error_write(struct selector_key* key);
@@ -74,6 +78,7 @@ static unsigned copy_write(struct selector_key *key);
 /** maquina de estados general */
 enum httpd_state {
     REQUEST_LINE_READ,
+    REQUEST_RESOLVE,
     CONNECTING,
     REQUEST_LINE_WRITE,
     REQUEST_MESSAGE,
@@ -190,22 +195,31 @@ struct httpd {
 /** Definición de handlers para cada estado */
 static const struct state_definition client_statbl[] = {
 
-    {.state = REQUEST_LINE_READ,
+    {
+     .state = REQUEST_LINE_READ,
      .on_arrival = request_line_read_init,
-     .on_read_ready = request_line_read},
-    {.state = CONNECTING,
+     .on_read_ready = request_line_read
+     },
+     {
+      .state = REQUEST_RESOLVE,
+      .on_write_ready = request_resolve_done,
+     },
+    {
+     .state = CONNECTING,
      .on_arrival = connecting_init,
-     .on_write_ready = connecting_done},
-    {.state = REQUEST_LINE_WRITE,
+     .on_write_ready = connecting_done
+     },
+    {
+     .state = REQUEST_LINE_WRITE,
      .on_arrival = request_line_write_init,
      .on_write_ready = request_line_write,
      .on_departure = request_line_write_on_departure
      },
-    {.state = REQUEST_MESSAGE,
-     .on_arrival = request_message_init,
-     .on_read_ready = request_message_read,
-     .on_write_ready = request_message_write
-
+     {.state = REQUEST_MESSAGE,
+        .on_arrival = request_message_init,
+        .on_read_ready = request_message_read,
+        .on_write_ready = request_message_write,
+        .on_departure = request_message_on_departure,
      },
     {
         .state = RESPONSE_LINE_READ,
@@ -222,7 +236,8 @@ static const struct state_definition client_statbl[] = {
         .state = RESPONSE_MESSAGE,
         .on_arrival = response_message_init,
         .on_read_ready = response_message_read,
-        .on_write_ready = response_message_write
+        .on_write_ready = response_message_write,
+        .on_departure = response_message_on_departure,
      },
     {
         .state = COPY,
@@ -329,7 +344,7 @@ static struct httpd *httpd_new(int client_fd){
     return ret;
 }
 
-static unsigned connect_to_origin(int origin_family,const struct sockaddr* addr, struct selector_key*key);
+static unsigned connect_to_origin(int origin_family, struct selector_key*key);
 
 /** Intenta aceptar la nueva conexión entrante*/
 
@@ -376,6 +391,7 @@ fail:
     if(client != -1) {
         close(client);
     }
+    free(state);
     //TODO liberar bien los recursos
     //socks5_destroy(state);
 }
@@ -460,50 +476,58 @@ finally:
 
 static unsigned request_line_process(struct request_line * rl,struct selector_key * key){
     unsigned ret = ERROR;
-    struct sockaddr_in6 *addrV6;
-    struct sockaddr_in *addrV4;
-    struct httpd *data = ATTACHMENT(key);
 
+    struct httpd *data = ATTACHMENT(key);
+    struct sockaddr_storage*origin_addr = &data->origin_addr;
     switch (rl->request_target.host_type)
     {
     case ipv6_addr_t:
-        addrV6 = &rl->request_target.host.ipv6;
-        addrV6->sin6_port = rl->request_target.port;
-        addrV6->sin6_family = AF_INET6;
+        rl->request_target.host.ipv6.sin6_port =  rl->request_target.port;
+        rl->request_target.host.ipv6.sin6_family = AF_INET6;
         data->origin_addr_type = AF_INET6;
-        memcpy(&data->origin_addr, addrV6, sizeof(*addrV6));
-        ret = connect_to_origin(AF_INET6, (const struct sockaddr *)addrV6, key);
+        data->origin_addr_len = sizeof(rl->request_target.host.ipv6);
+        memcpy(&data->origin_addr, &rl->request_target.host.ipv6,data->origin_addr_len);
+        ret = connect_to_origin(AF_INET6, key);
         break;
     case ipv4_addr_t:
-        addrV4 = &rl->request_target.host.ipv4;
-        addrV4->sin_port = rl->request_target.port;
-        addrV4->sin_family = AF_INET;
-        data->origin_addr_type = AF_INET6;
-        memcpy(&data->origin_addr, addrV4, sizeof(*addrV4));
-        ret = connect_to_origin(AF_INET, (const struct sockaddr *)addrV4, key);
+        rl->request_target.host.ipv4.sin_port =  rl->request_target.port;
+        rl->request_target.host.ipv4.sin_family = AF_INET;
+        data->origin_addr_type = AF_INET;
+        data->origin_addr_len = sizeof(rl->request_target.host.ipv4);
+        memcpy(&data->origin_addr, &rl->request_target.host.ipv4, data->origin_addr_len);
+        ret = connect_to_origin(AF_INET, key);
         break;
 
     case domain_addr_t:
-        ret = ERROR;
+        ret = REQUEST_RESOLVE;
+        if (SELECTOR_SUCCESS != selector_set_interest(key->s, key->fd, OP_NOOP))
+        {
+            ret = ERROR;
+        }
         break;
     }
     return ret;
 }
-
-
+////////////////////////////////////////////////////////////////////////////////
+// REQUEST RESOLVE
+////////////////////////////////////////////////////////////////////////////////
+static unsigned request_resolve_done(struct selector_key * key){
+    struct httpd *data = ATTACHMENT(key);
+    return ERROR;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // CONNECTING
 ////////////////////////////////////////////////////////////////////////////////
 
-static unsigned connect_to_origin(int origin_family,const struct sockaddr* addr, struct selector_key*key){
-     
+static unsigned connect_to_origin(int origin_family,struct selector_key*key){
+    struct httpd *data = ATTACHMENT(key);
     char buff2[30];
 
-    sockaddr_to_human(buff2, 50, addr);
+    sockaddr_to_human(buff2, 50, (const struct sockaddr*)&data->origin_addr);
     printf("%s\n", buff2);
-    struct httpd *data = ATTACHMENT(key);
-  
+
+
 
     bool error = false;
     unsigned ret = CONNECTING;
@@ -520,7 +544,7 @@ static unsigned connect_to_origin(int origin_family,const struct sockaddr* addr,
         error = true;
         goto finally;
     }
-    if(connect(origin_fd,addr,sizeof(*addr)) == -1){
+    if(connect(origin_fd,(const struct sockaddr*)&data->origin_addr,data->origin_addr_len) == -1){
         if(errno == EINPROGRESS){
             // se esta conectando
             printf("Connect to origin EINPROGRESS origin_fd %d\n",origin_fd);
@@ -738,35 +762,35 @@ finally :
 // REQUEST MESSAGE
 ////////////////////////////////////////////////////////////////////////////////
 
-void host_on_value_end(struct request_message_parser* parser){
-    assert(parser != NULL && parser->current_detection != NULL);
-    printf("Host: %s\n", parser->current_detection->value_storage);
+static void authorization_on_value_end(struct request_message_parser* parser){
+   assert(parser != NULL && parser->current_detection != NULL);
+   printf("Authorization: %s\n",get_detection_value(parser)); 
+   //Decodear y guardar en informacion para printear registro P
 }
 
-void content_length_on_value_end(struct request_message_parser* parser){
+static void content_length_on_value_end(struct request_message_parser* parser){
     assert(parser != NULL && parser->current_detection != NULL);
-    parser->content_lenght = atoi((char*)parser->current_detection->value_storage);
+    set_content_length(parser,atoi(get_detection_value(parser)));
     printf("CONTENT LENGTH = %d\n", parser->content_lenght);
 }
 
-void connection_on_value_end(struct request_message_parser* parser){
-    assert(parser != NULL && parser->current_detection != NULL);
-    printf("CONNECTION ON VALUE END\n");
-}
+
 
 static void request_message_init(const unsigned state,struct selector_key *key){
     printf("request message init\n");
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
     rm->rb = &data->from_origin_buffer;
-    request_message_parser_init(&rm->parser,3);
+    request_message_parser_init(&rm->parser,4); // <= cantidad de headers a tener en cuenta, podria mejorarse la interfaz para que no sea necesario pasarselo
     int len = data->origin_addr.ss_family == AF_INET ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
     char *host_buffer = (char *)malloc(len);
-
-    add_header(&rm->parser, "Host", HEADER_REPLACE,sockaddr_to_human(host_buffer,len,((const struct sockaddr*)&data->origin_addr)), host_on_value_end);
-    add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
-    add_header(&rm->parser, "Connection", HEADER_IGNORE,NULL, connection_on_value_end);
     
+    // El parser de header es case insensitive
+    add_header(&rm->parser, "Host", HEADER_REPLACE,sockaddr_to_human(host_buffer,len,((const struct sockaddr*)&data->origin_addr)), NULL);
+    add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
+    add_header(&rm->parser, "Connection", HEADER_IGNORE,NULL, NULL);
+    add_header(&rm->parser, "Authorization",  (HEADER_STORAGE | HEADER_SEND),NULL, authorization_on_value_end);
+    printf("cree headers\n");
     if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
     {
             abort();
@@ -999,6 +1023,12 @@ static unsigned response_line_read(struct selector_key *key)
 
     return error ? ERROR : ret;
 }
+static void request_message_on_departure(const unsigned state, struct selector_key *key){
+    struct httpd *data = ATTACHMENT(key);
+    struct request_message_st *rm = &data->client.request_message;
+    request_message_parser_destroy(&rm->parser);
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // RESPONSE LINE WRITE
@@ -1111,6 +1141,14 @@ static unsigned response_message_read(struct selector_key* key){
     bool error =  read_message(data->origin_fd, data->client_fd, origin_rb, key->s);
     return error ? ERROR : RESPONSE_MESSAGE;
 }
+
+
+static void response_message_on_departure(const unsigned state, struct selector_key *key){
+    struct httpd *data = ATTACHMENT(key);
+    struct request_message_st *rm = &data->origin.request_message;
+    request_message_parser_destroy(&rm->parser);
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // ERROR

@@ -49,7 +49,7 @@ typedef struct request_message_parser
 
 
     // tamaño del body,si no hay body su valor es 0
-    unsigned content_lenght;
+    long content_lenght;
 
     // indice para saber donde agregar el header en headers_to_detect
     unsigned add_index;
@@ -103,4 +103,6 @@ void add_header(struct request_message_parser *parser, char *header_name,header_
 void request_message_parser_reset(struct request_message_parser *parser);
 void request_message_parser_destroy(struct request_message_parser *parser);
 bool request_message_parser_process(const struct parser_event *e, request_message_parser *parser, uint8_t *write_buffer, unsigned *write_index,bool * error);
+char *get_detection_value(struct request_message_parser *parser);
+void set_content_length(struct request_message_parser *parser, long content_length);
 #endif
