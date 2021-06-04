@@ -77,18 +77,19 @@ status_message(struct parser_event *ret, const uint8_t c) {
 }
 
 static void
-status_message_end(struct parser_event *ret, const uint8_t c) {
-    ret->type    = RS_STATUS_MESSAGE_END;
-    ret->n       = 1;
-    ret->data[0] = c;
-}
-
-static void
 unexpected(struct parser_event *ret, const uint8_t c) {
     ret->type    = RS_UNEXPECTED;
     ret->n       = 1;
     ret->data[0] = c;
 }
+
+
+static void
+done(struct parser_event *ret, const uint8_t c) {
+    ret->type    = RS_DONE;
+    ret->n       = 0;
+}
+
 
 static void
 wait(struct parser_event *ret, const uint8_t c) {
@@ -96,11 +97,6 @@ wait(struct parser_event *ret, const uint8_t c) {
     ret->n       = 0;
 }
 
-static void
-done(struct parser_event *ret, const uint8_t c) {
-    ret->type    = RS_DONE;
-    ret->n       = 0;
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Transiciones
@@ -164,13 +160,14 @@ static const struct parser_state_transition ST_CR[] =  {
         {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
+static const struct parser_state_transition ST_ERROR[] =  {
+        {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
+};
+
 static const struct parser_state_transition ST_DONE[] =  {
         {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
-static const struct parser_state_transition ST_ERROR[] =  {
-        {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
-};
 
 ///////////////////////////////////////////////////////////////////////////////
 // Declaración formal
@@ -191,8 +188,7 @@ static const struct parser_state_transition *states[] =
                 ST_STATUS_MESSAGE,
                 ST_CR,
                 ST_DONE,
-                ST_ERROR,
-
+                ST_ERROR
         };
 
 #define N(x) (sizeof(x)/sizeof((x)[0]))
@@ -240,6 +236,7 @@ void response_line_parser_init(struct response_line_parser *parser)
 
 static bool process_event(const struct parser_event * e, response_line_parser *parser){
     struct response_line * rl = parser->response_line;
+    bool error = false;
     switch (e->type)
     {
         case RS_HTTP_VERSION_MAJOR:
@@ -255,12 +252,22 @@ static bool process_event(const struct parser_event * e, response_line_parser *p
             rl->status_code[rl->code_counter] = '\0';
             break;
         case RS_STATUS_MESSAGE:
-            if(rl->message_counter > MAX_MSG_LENGTH)
-                return true;
+            if(rl->message_counter >= MAX_MSG_LENGTH){
+                error = true;
+                goto finally;
+            }
             rl->status_message[(rl->message_counter)++] = e->data[0];
             break;
-        case RS_STATUS_MESSAGE_END:
+        case RS_DONE:
+          /*  for(unsigned i = 0; i < e->n;i++){
+                if(rl->message_counter >= MAX_MSG_LENGTH){
+                    error = true;
+                    goto finally;
+                }
+                rl->status_message[rl->message_counter++] = e->data[i];
+            }*/
             rl->status_message[rl->message_counter] = '\0';
+         
             break;
         case RS_WAIT:
             // nada
@@ -268,7 +275,8 @@ static bool process_event(const struct parser_event * e, response_line_parser *p
         default:
             break;
     }
-    return false;
+finally:
+    return error;
 }
 
 bool response_line_parser_consume(buffer *buffer, response_line_parser *parser, bool *error){
