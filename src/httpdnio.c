@@ -361,7 +361,8 @@ httpd_passive_accept(struct selector_key *key) {
 
     memcpy(&state->client_addr, &client_addr, client_addr_len);
     state->client_addr_len = client_addr_len;
-
+    char buff[40];
+    printf("client addres: %s\n", sockaddr_to_human(buff,40,((const struct sockaddr*)&state->client_addr)));
     // no quiero leer desde el cliente hasta que me conecte con el origen
    if(SELECTOR_SUCCESS != selector_register(key->s, client, &httpd_handler,
                                               OP_READ, state)) {
@@ -619,7 +620,7 @@ static void request_line_write_init(const unsigned state,struct selector_key *ke
     rl->data.data_to_send_len = method_len + origin_form_len + 12;
     rl->data.data_to_send = (uint8_t*)malloc( rl->data.data_to_send_len);
  
-   
+
 
     if(-1 == sprintf((char*)rl->data.data_to_send,"%s %s HTTP/%d.%d\r\n",(char*)rl->request_line_data.method,(char*)rl->request_line_data.request_target.origin_form,1,0)){
         abort();
@@ -640,7 +641,7 @@ static void request_line_write_on_departure(const unsigned state,struct selector
     struct httpd *data = ATTACHMENT(key);
     struct request_line_st* rl = &(data->client.request_line);
     free(rl->data.data_to_send);
- 
+
 }
 
 static bool send_buffer(int read_fd,int write_fd, buffer *b,fd_selector s, struct data_to_send* data,bool *error){
@@ -667,7 +668,7 @@ static bool send_buffer(int read_fd,int write_fd, buffer *b,fd_selector s, struc
         size_t written = numBytesWritten < rbytes ? numBytesWritten : rbytes;
 
         buffer_read_adv(b, written);
-     
+
         printf("%d)Escribi %ld bytes del request line\n",write_fd, written);
         printf("\nWRITE BUFFER\n");
         print_buffer(b);
@@ -725,8 +726,6 @@ finally :
     return error ? ERROR : ret;
 }
 
-
-
 ////////////////////////////////////////////////////////////////////////////////
 // REQUEST MESSAGE
 ////////////////////////////////////////////////////////////////////////////////
@@ -753,7 +752,10 @@ static void request_message_init(const unsigned state,struct selector_key *key){
     struct request_message_st *rm = &data->client.request_message;
     rm->rb = &data->from_origin_buffer;
     request_message_parser_init(&rm->parser,3);
-    add_header(&rm->parser, "Host", HEADER_REPLACE,"reemplazo.com.ar", host_on_value_end);
+    int len = data->origin_addr.ss_family == AF_INET ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
+    char *host_buffer = (char *)malloc(len);
+
+    add_header(&rm->parser, "Host", HEADER_REPLACE,sockaddr_to_human(host_buffer,len,((const struct sockaddr*)&data->origin_addr)), host_on_value_end);
     add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
     add_header(&rm->parser, "Connection", HEADER_IGNORE,NULL, connection_on_value_end);
     
@@ -824,7 +826,7 @@ static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_
   
     buffer_read_ptr(rb, &rbytes);
     printf("rbytes %ld \n", rbytes);
-  
+
     uint8_t write_buffer[rbytes + WRITE_MESSAGE_EXTRA_SPACE];
    
     unsigned write_index = 0;
@@ -893,21 +895,17 @@ static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_
                     }
                 }
             }else{
-               
-                    if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
-                    {
-                      
-                        *error = true;
-                        goto finally;
-                    }
-                    if (SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP))
-                    {
-                        *error = true;
-                        goto finally;
-                    }
+                if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
+                {
+                    *error = true;
+                    goto finally;
+                }
+                if (SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP))
+                {
+                    *error = true;
+                    goto finally;
+                }
             }
-          
-      
            
 finally:
     return done;
@@ -1117,7 +1115,7 @@ static void error_init(const unsigned state,struct selector_key * key){
 
     struct response_line_st rl = data->client.response_line;
 
-   
+
     status_code status = data->status;
     const struct error_response response = error_responses[status];
     rl.data.data_to_send_len = strlen(response.status_message) + 15;

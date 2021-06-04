@@ -22,7 +22,4 @@ sockaddr_to_human(char *buff, const size_t buffsize,
                   const struct sockaddr *addr);
 
 
-
-
-
 #endif
