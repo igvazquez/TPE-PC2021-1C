@@ -80,7 +80,7 @@ parse_args(const int argc,const char **argv) {
     }
     memset(args, 0, sizeof(*args)); // sobre todo para setear en null los punteros de users
 
-    args->httpd_v4_addr = "127.0.0.1";
+    args->httpd_v4_addr = "0.0.0.0";
     args->httpd_v6_addr = "::1";
     args->httpd_port = 1080;
 

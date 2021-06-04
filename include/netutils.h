@@ -21,7 +21,6 @@ const char *
 sockaddr_to_human(char *buff, const size_t buffsize,
                   const struct sockaddr *addr);
 
-const char *addr_to_string(char* buff,struct sockaddr_storage addr, int buffsize);
 
 
 

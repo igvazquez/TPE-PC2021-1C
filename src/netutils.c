@@ -55,18 +55,4 @@ sockaddr_to_human(char *buff, const size_t buffsize,
     return buff;
 }
 
-const char *addr_to_string(char* buff,struct sockaddr_storage *addr, int buffsize){
 
-    switch(addr.ss_family){
-        case AF_INET:
-            return inet_ntop(addr.ss_family, &(((struct sockaddr_in *)addr)->sin_addr), buff, buffsize);
-            break;
-        case AF_INET6:
-            return inet_ntop(addr.ss_family, &(((struct sockaddr_in6 *)addr)->sin6_addr), addr, buffsize);
-            break;
-        default:
-            return NULL;
-            break;
-    }
-
-}

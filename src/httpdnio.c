@@ -354,7 +354,8 @@ httpd_passive_accept(struct selector_key *key) {
 
     memcpy(&state->client_addr, &client_addr, client_addr_len);
     state->client_addr_len = client_addr_len;
-
+    char buff[40];
+    printf("client addres: %s\n", sockaddr_to_human(buff,40,((const struct sockaddr*)&state->client_addr)));
     // no quiero leer desde el cliente hasta que me conecte con el origen
    if(SELECTOR_SUCCESS != selector_register(key->s, client, &httpd_handler,
                                               OP_READ, state)) {
@@ -797,7 +798,10 @@ static void request_message_init(const unsigned state,struct selector_key *key){
     struct request_message_st *rm = &data->client.request_message;
     rm->rb = &data->from_origin_buffer;
     request_message_parser_init(&rm->parser,3);
-    add_header(&rm->parser, "Host", HEADER_REPLACE,"reemplazo.com.ar", host_on_value_end);
+    int len = data->origin_addr.ss_family == AF_INET ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
+    char *host_buffer = (char *)malloc(len);
+    
+    add_header(&rm->parser, "Host", HEADER_REPLACE,sockaddr_to_human(host_buffer,len,((const struct sockaddr*)&data->origin_addr)), host_on_value_end);
     add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
     add_header(&rm->parser, "Connection", HEADER_IGNORE,NULL, connection_on_value_end);
     
@@ -866,10 +870,10 @@ static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_
 
     size_t rbytes;
   
-    uint8_t *write_buffer_ptr = buffer_read_ptr(rb, &rbytes);
+    buffer_read_ptr(rb, &rbytes);
     printf("rbytes %ld \n", rbytes);
   
-    unsigned ret = REQUEST_MESSAGE;
+  
     uint8_t write_buffer[rbytes + WRITE_MESSAGE_EXTRA_SPACE];
    
     unsigned write_index = 0;
@@ -938,7 +942,7 @@ static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_
                     }
                 }
             }else{
-                ret = RESPONSE_LINE_READ;
+              
                     if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
                     {
                       
