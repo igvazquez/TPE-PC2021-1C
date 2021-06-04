@@ -1072,6 +1072,11 @@ static void copy_init(const unsigned state,struct selector_key *key){
     copy->interest = OP_READ | OP_WRITE;
     copy->rb = &data->from_client_buffer;
     copy->wb = &data->from_origin_buffer;
+
+    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
+    {
+        abort();
+    }
 }
 
 static struct copy_st *get_copy_from_key(struct selector_key *key){

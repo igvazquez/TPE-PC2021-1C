@@ -55,48 +55,18 @@ sockaddr_to_human(char *buff, const size_t buffsize,
     return buff;
 }
 
-int
-sock_blocking_write(const int fd, buffer *b) {
-        int  ret = 0;
-    ssize_t  nwritten;
-	 size_t  n;
-	uint8_t *ptr;
+const char *addr_to_string(char* buff,struct sockaddr_storage *addr, int buffsize){
 
-    do {
-        ptr = buffer_read_ptr(b, &n);
-        nwritten = send(fd, ptr, n, MSG_NOSIGNAL);
-        if (nwritten > 0) {
-            buffer_read_adv(b, nwritten);
-        } else /* if (errno != EINTR) */ {
-            ret = errno;
+    switch(addr.ss_family){
+        case AF_INET:
+            return inet_ntop(addr.ss_family, &(((struct sockaddr_in *)addr)->sin_addr), buff, buffsize);
             break;
-        }
-    } while (buffer_can_read(b));
-
-    return ret;
-}
-
-int
-sock_blocking_copy(const int source, const int dest) {
-    int ret = 0;
-    char buf[4096];
-    ssize_t nread;
-    while ((nread = recv(source, buf, N(buf), 0)) > 0) {
-        char* out_ptr = buf;
-        ssize_t nwritten;
-        do {
-            nwritten = send(dest, out_ptr, nread, MSG_NOSIGNAL);
-            if (nwritten > 0) {
-                nread -= nwritten;
-                out_ptr += nwritten;
-            } else /* if (errno != EINTR) */ {
-                ret = errno;
-                goto error;
-            }
-        } while (nread > 0);
+        case AF_INET6:
+            return inet_ntop(addr.ss_family, &(((struct sockaddr_in6 *)addr)->sin6_addr), addr, buffsize);
+            break;
+        default:
+            return NULL;
+            break;
     }
-    error:
 
-    return ret;
 }
-
