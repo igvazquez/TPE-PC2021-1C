@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include "../include/parser.h"
 #include "../include/buffer.h"
+#include "../include/error_responses.h"
 
 enum {
 
@@ -65,8 +66,8 @@ typedef struct response_line_parser{
 /** la definición del parser */
 const struct parser_definition * response_line_parser_definition(void);
 void response_line_parser_init(struct response_line_parser *parser);
-bool response_line_parser_consume(buffer *buffer, response_line_parser *parser, bool *error);
-bool response_line_is_done(enum response_line_event_type type, bool *error);
+bool response_line_parser_consume(buffer *buffer, response_line_parser *parser, status_code *status);
+bool response_line_is_done(enum response_line_event_type type, status_code * status);
 void response_line_parser_reset(struct response_line_parser *p);
 
 #endif //RESPONSE_LINE_H

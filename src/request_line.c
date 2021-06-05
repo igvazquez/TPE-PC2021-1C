@@ -7,18 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
-/*
-#define UNKOWN_ADDR_TYPE (DOMAIN_NAME | IPV4 | IPV6)
-#define DOMAIN_NAME_OR_IPV4 (DOMAIN_NAME | IPV4)
-
-
-static enum start_line_state scheme(struct parser *parser, uint8_t c);
-static enum start_line_state host(struct start_line * sl, uint8_t c);
-
-static enum start_line_state port(struct start_line *sl, uint8_t c);
-static enum start_line_state path(struct start_line *sl, uint8_t c);
-*/
-
 
 enum state
 {
@@ -523,13 +511,13 @@ static void set_authority_form(struct parser* p){
     parser_set_state(p, HOST0);
 }
 
-static bool process_event(const struct parser_event * e,request_line_parser *parser){
+static status_code process_event(const struct parser_event * e,request_line_parser *parser){
     struct parsed_info *parsed_info= &parser->parsed_info;
     switch (e->type)
     {
     case RL_METHOD:
         if(parsed_info->method_counter > MAX_METHOD_LENGTH)
-            return true;
+            return BAD_REQUEST;
         parsed_info->method_buffer[(parsed_info->method_counter)++] = e->data[0];
         break;
     case RL_METHOD_END:
@@ -540,18 +528,18 @@ static bool process_event(const struct parser_event * e,request_line_parser *par
         break;
     case RL_HOST:
             if(parsed_info->host_counter > MAX_FQDN_LENGTH)
-                return true;
+                return URI_TOO_LONG;
             parsed_info->host.domain_or_ipv4_buffer[(parsed_info->host_counter)++] = e->data[0];
         break;
     case RL_HOST_END:
         if(parsed_info->host_type == domain_or_ipv4_addr){
             if(parsed_info->host_counter > MAX_FQDN_LENGTH)
-                return true;
+                return URI_TOO_LONG;
             parsed_info->host.domain_or_ipv4_buffer[parsed_info->host_counter] = '\0';
 
         }else{
             if(parsed_info->host_counter > MAX_IPV6_LENGTH)
-                return true;
+                return URI_TOO_LONG;
             parsed_info->host.ipv6_buffer[parsed_info->host_counter] = '\0';
         }
         break;
@@ -565,17 +553,17 @@ static bool process_event(const struct parser_event * e,request_line_parser *par
         break;
     case RL_IPV6:
         if(parsed_info->host_counter > MAX_IPV6_LENGTH)
-            return true;
+            return URI_TOO_LONG;
         parsed_info->host.ipv6_buffer[(parsed_info->host_counter)++] = e->data[0];
         break;
     case RL_ORIGIN_FORM:
         if(parsed_info->origin_form_counter > MAX_ORIGIN_FORM)
-            return true;
+            return URI_TOO_LONG;
         parsed_info->origin_form_buffer[(parsed_info->origin_form_counter)++] = e->data[0];
         break;
     case RL_ORIGIN_FORM_END:
         if(parsed_info->origin_form_counter > MAX_ORIGIN_FORM)
-            return true;
+            return URI_TOO_LONG;
 
         parsed_info->origin_form_buffer[parsed_info->origin_form_counter] =  '\0';
         break;
@@ -595,14 +583,14 @@ static bool process_event(const struct parser_event * e,request_line_parser *par
     case RL_WAIT:
         // nada
         break;
-        default:
+    default:
         break;
     }
-    return false;
+    return OK;
 }
 
 
-static void fill_request_line_data(struct request_line_parser * parser,bool *error){
+static void fill_request_line_data(struct request_line_parser * parser, status_code *status){
     printf("\nfill request line data\n");
     struct request_line *rl = parser->request_line;
     struct parsed_info pi = parser->parsed_info;
@@ -617,7 +605,7 @@ static void fill_request_line_data(struct request_line_parser * parser,bool *err
             }else if(i6pton_ret <= 0){
                 // la ipv6 no es correcta o inet_pton falló
                 //TODO: probablemente el bool * error en todas estas funciones deba cambiar por una enum para luego devolver una respuesta de error custom
-                *error = true;
+                *status = BAD_REQUEST;
                 printf("Not ipv6\n");
                 goto finally;
             }
@@ -626,7 +614,7 @@ static void fill_request_line_data(struct request_line_parser * parser,bool *err
             
             printf("Probando si ipv4: %s es valida\n", pi.host.domain_or_ipv4_buffer);
             if((i4pton_ret=inet_pton(AF_INET,pi.host.domain_or_ipv4_buffer,&(rl->request_target.host.ipv4.sin_addr))) == 1){
-                    // La ip ingresada es ipv6
+                    // La ip ingresada es ipv4
                 rl->request_target.host_type = ipv4_addr_t;
             }else if(i4pton_ret == 0){
                 printf("%s es un domain name\n", pi.host.domain_or_ipv4_buffer);
@@ -637,12 +625,12 @@ static void fill_request_line_data(struct request_line_parser * parser,bool *err
               
             }else{
                 // inet_pton falló
-                 *error = true;
+                 *status = BAD_REQUEST;
                  goto finally;
             }
             break;
         default:
-            *error = true;
+            *status = BAD_REQUEST;
             return;
             break;
     }
@@ -662,14 +650,14 @@ static void fill_request_line_data(struct request_line_parser * parser,bool *err
     if(pi.version_major == 1){
          rl->version_major = version_major;
     }else{
-        *error = true;
+        *status = HTTP_VERSION_NOT_SUPPORTED;
         goto finally;
     }
     uint8_t version_minor = pi.version_minor;
     if(version_minor <= 1){
          rl->version_minor = version_minor;
     }else{
-        *error = true;
+        *status = HTTP_VERSION_NOT_SUPPORTED;
         goto finally;
     }
 
@@ -682,10 +670,7 @@ finally:
     return;
 }
 
-
-
-
-bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, bool *error){
+bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, status_code * status){
 
     assert(parser != NULL && buffer != NULL);
     const struct parser_event *e;
@@ -697,15 +682,15 @@ bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, bo
         e = parser_feed(parser->rl_parser, c);
         printf("Estado: %d\n", e->type);
         do{
-            if((*error = process_event(e,parser))){
+            if((*status = process_event(e,parser))){
                 //dio error
                 return true;
             }
-            if (request_line_is_done(e->type, error))
+            if (request_line_is_done(e->type, status))
             {
-                printf("request message done - error: %d\n", *error);
-                if(*error == false){
-                    fill_request_line_data(parser, error);
+                printf("request message done - error: %d\n", *status);
+                if(*status == OK){
+                    fill_request_line_data(parser, status);
                 }
                 return true;
             }
@@ -727,21 +712,19 @@ void request_line_parser_reset(struct request_line_parser *parser){
 
 
 
-bool request_line_is_done(enum request_line_event_type type, bool *error){
+bool request_line_is_done(enum request_line_event_type type, status_code *status){
 
-    assert(error != NULL);
     switch(type){
         case RL_UNEXPECTED:
-            *error = true;
+            *status = BAD_REQUEST;
             return true;
             break;
         case RL_DONE:
-            
-            *error = false;
+            *status = OK;
             return true;
             break;
         default:
-            *error = false;
+            *status = OK;
             return false;
         };
         return false;

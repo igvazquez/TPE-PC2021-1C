@@ -150,7 +150,7 @@ static const struct parser_state_transition ST_CODE3[] =  {
         {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 static const struct parser_state_transition ST_STATUS_MESSAGE[] =  {
-        {.when = TOKEN_UNRESERVED,        .dest = STATUS_MESSAGE,         .act1 = status_message,},
+        {.when = TOKEN_BCHARS,        .dest = STATUS_MESSAGE,         .act1 = status_message,},
         {.when = '\r',        .dest = CR,         .act1 = wait,},
         {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
@@ -234,9 +234,9 @@ void response_line_parser_init(struct response_line_parser *parser)
     }
 }
 
-static bool process_event(const struct parser_event * e, response_line_parser *parser){
+static status_code process_event(const struct parser_event * e, response_line_parser *parser){
     struct response_line * rl = parser->response_line;
-    bool error = false;
+    status_code status = OK;
     switch (e->type)
     {
         case RS_HTTP_VERSION_MAJOR:
@@ -253,7 +253,7 @@ static bool process_event(const struct parser_event * e, response_line_parser *p
             break;
         case RS_STATUS_MESSAGE:
             if(rl->message_counter >= MAX_MSG_LENGTH){
-                error = true;
+                status = BAD_REQUEST;
                 goto finally;
             }
             rl->status_message[(rl->message_counter)++] = e->data[0];
@@ -276,10 +276,10 @@ static bool process_event(const struct parser_event * e, response_line_parser *p
             break;
     }
 finally:
-    return error;
+    return status;
 }
 
-bool response_line_parser_consume(buffer *buffer, response_line_parser *parser, bool *error){
+bool response_line_parser_consume(buffer *buffer, response_line_parser *parser, status_code *status){
 
     assert(parser != NULL && buffer != NULL);
     const struct parser_event *e;
@@ -291,11 +291,11 @@ bool response_line_parser_consume(buffer *buffer, response_line_parser *parser, 
         e = parser_feed(parser->rl_parser, c);
         printf("Estado: %d\n", e->type);
         do{
-            if (response_line_is_done(e->type, error))
+            if (response_line_is_done(e->type, status))
             {
                 return true;
             }
-            if((*error = process_event(e,parser))){
+            if((*status = process_event(e,parser))){
                 //dio error
                 return true;
             }
@@ -309,21 +309,20 @@ void response_line_parser_reset(struct response_line_parser *parser){
     parser_reset(parser->rl_parser);
 }
 
-bool response_line_is_done(enum response_line_event_type type, bool *error){
+bool response_line_is_done(enum response_line_event_type type, status_code * status){
 
-    assert(error != NULL);
     switch(type){
         case RS_UNEXPECTED:
-            *error = true;
+            *status = BAD_REQUEST;
             return true;
             break;
         case RS_DONE:
 
-            *error = false;
+            *status = OK;
             return true;
             break;
         default:
-            *error = false;
+            *status = OK;
             return false;
     };
     return false;

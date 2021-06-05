@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include "../include/parser.h"
 #include "../include/buffer.h"
+#include "../include/error_responses.h"
 
 
 #define IPV4_REGEX  "((25[0-5]|2[0-4][0-9]|(1[0-9][0-9]|([1-9]?[0-9]))).){3}(25[0-5]|2[0-4][0-9]|(1[0-9][0-9]|([1-9]?[0-9])))"
@@ -172,7 +173,7 @@ typedef struct request_line_parser{
 
 void request_line_parser_init(struct request_line_parser *parser);
 //enum start_line_state start_line_parser_feed(start_line_parser *parser, uint8_t c);
-bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, bool *error);
-bool request_line_is_done(enum request_line_event_type type, bool *error);
+bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, status_code * status);
+bool request_line_is_done(enum request_line_event_type type, status_code *status);
 void request_line_parser_reset(struct request_line_parser *p);
 #endif
