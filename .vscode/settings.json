@@ -2,6 +2,9 @@
     "files.associations": {
         "netutils.h": "c",
         "httpdnio.h": "c",
-        "selector.h": "c"
+        "selector.h": "c",
+        "stdout_writer.h": "c",
+        "request_line.h": "c",
+        "register_log.h": "c"
     }
 }

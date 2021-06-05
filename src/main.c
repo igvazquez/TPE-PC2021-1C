@@ -194,8 +194,8 @@ main(const int argc, const char **argv) {
 /////////////////////////////////////////////////////////////////
 //  NON BLOCKING STD OUT REGISTERING
 /////////////////////////////////////////////////////////////////
-    stdout_writer_initialize(selector);
-    const struct fd_handler stdout_handler = {
+    stdout_writer_initialize(&selector);
+ /*   const struct fd_handler stdout_handler = {
         .handle_read       = NULL,
         .handle_write      = stdout_write,
         .handle_close      = NULL, // nada que liberar
@@ -208,12 +208,12 @@ main(const int argc, const char **argv) {
         goto finally;
     }
 
-    ss = selector_register(selector, 1, &stdout_handler,OP_READ, get_stdout_writer_data);
+    ss = selector_register(selector, 1, &stdout_handler,OP_NOOP, get_stdout_writer_data());
     if(ss != SELECTOR_SUCCESS) {
         err_msg = "registering fd STDOUT";
         goto finally;
     }
-
+*/
 ////////////////////////////////////////////////////////////////
 
     for(;!done;) {
