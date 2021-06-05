@@ -67,6 +67,14 @@ struct request_line {
      */
     uint8_t method[MAX_METHOD_LENGTH + 1];
     
+    union {
+            /** especificado con un nombre que se debe resolver (NUL-terminated) */
+            char                domain[MAX_FQDN_LENGTH + 1];
+            /** especificada como una dirección IPV4 */
+            struct sockaddr_in  ipv4;
+            /** especificada como una dirección IPV6 */
+            struct sockaddr_in6 ipv6;
+        } host;
    
 
     struct {
@@ -87,14 +95,7 @@ struct request_line {
         // host y port aplican a todos
 
         /** el host al cual hay que conectarse puede estar escrito de tres formas */
-        union {
-            /** especificado con un nombre que se debe resolver (NUL-terminated) */
-            char                domain[MAX_FQDN_LENGTH + 1];
-            /** especificada como una dirección IPV4 */
-            struct sockaddr_in  ipv4;
-            /** especificada como una dirección IPV6 */
-            struct sockaddr_in6 ipv6;
-        } host;
+        
 
         /** port in network byte order */
         in_port_t port;
