@@ -15,24 +15,26 @@ enum protocol {
     POP3,
 };
 
-__attribute__((unused)) static const char *protocol_str[] = {"HTTP", "POP3"};
+struct log_data {
+    enum request_line_addr_type type;
 
-struct log_info {
+    //Access
+    struct sockaddr_storage orig_addr;
+    in_port_t orig_port;
     uint8_t method;
-    enum selector_status status;
-    enum request_line_addr_type atyp;
-    struct sockaddr_storage client_addr;
-    union host dest_addr;
-    in_port_t origin_port;
     char * target;
+    char* status;
     
+    //Passwords
+    enum protocol protocol;
+    union dest_address dest_addr;
+    in_port_t dest_port;
     char *user;
     char *password;
-    enum protocol protocol;
-    in_port_t dest_port;
+    
 };
 
-void log_access(struct log_info *info);
-void log_passwords(struct log_info *info);
+void logger_access(struct log_data *data);
+void logger_passwords(struct log_data *data);
 
 #endif 

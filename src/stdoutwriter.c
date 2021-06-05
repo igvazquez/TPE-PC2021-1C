@@ -8,9 +8,7 @@ struct writer * get_writer_data(){
 }
 
 int writer_initialize(fd_selector selector){
-    
 	writer_data = malloc(sizeof(*writer_data));
-
 	if(writer_data == NULL){
 		return -1;
 	}
@@ -20,7 +18,6 @@ int writer_initialize(fd_selector selector){
 }
 
 void writer_handler(struct selector_key * key){
-
 	struct writer *write = (struct writer *)key->data;
 	buffer *b = &writer->wb;
 	size_t size;
