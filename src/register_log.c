@@ -71,7 +71,7 @@ char* get_origin_string(union host_addr origin_addr,enum addr_type type,char* or
     return address;
 }
 
-static void get_current_date_string(char * date){
+void get_current_date_string(char * date){
     time_t t = time(NULL);
     struct tm *timeptr = localtime(&t);
     strftime(date,MAX_DATE_LENGTH,"%Y-%m-%dT%TZ",timeptr);
@@ -95,8 +95,6 @@ static in_port_t get_address_port(struct sockaddr_storage address){
 }
 
 static void log_register(struct log_data *log_data, char reg_type) {
-    char date[MAX_DATE_LENGTH];
-    get_current_date_string(date);
     char *format = NULL;
     size_t wBytes;
     struct stdout_writer* writer_data = get_stdout_writer_data();
@@ -106,8 +104,9 @@ static void log_register(struct log_data *log_data, char reg_type) {
             int client_addr_length = log_data->client_addr.ss_family == AF_INET ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
             char client_address_str[client_addr_length];
             set_address_string(log_data->client_addr, client_address_str ,client_addr_length);
-            char* format = "%s\tA\t%s\t%d\t%s\t%s\tstatus=%d\n";
-            n = snprintf((char*)write_ptr,wBytes,format, date,client_address_str, ntohs(log_data->origin_port), log_data->method, get_origin_string(log_data->origin_addr,log_data->origin_addr_type,log_data->origin_form,log_data->origin_port), error_responses[log_data->status].status);
+            char* format = "%s\tA\t%s\t%d\t%s\t%s\t%s\n";
+            n = snprintf((char*)write_ptr,wBytes,format, log_data->date,client_address_str, ntohs(log_data->origin_port), log_data->method, get_origin_string(log_data->origin_addr,log_data->origin_addr_type,log_data->origin_form,log_data->origin_port), log_data->status_code);
+            
     }else if(reg_type == 'P'){
         char *origin_addr = get_origin_string(log_data->origin_addr, log_data->origin_addr_type, NULL, log_data->origin_port);
         char *host;
@@ -121,7 +120,7 @@ static void log_register(struct log_data *log_data, char reg_type) {
         }
     
         format = "%s\tP\t%s\t%s\t%d\t%s\t%s\n";
-        n = snprintf((char*)write_ptr,wBytes,format, date,get_protocol_string(log_data->protocol),host, port, log_data->user, log_data->password);
+        n = snprintf((char*)write_ptr,wBytes,format, log_data->date,get_protocol_string(log_data->protocol),host, port, log_data->user, log_data->password);
         free(origin_addr);
     }else{
         return;

@@ -191,6 +191,7 @@ struct httpd {
     } origin;
 
     struct log_data log_data;
+    enum status_code status;
 };
 
 /** Definición de handlers para cada estado */
@@ -276,6 +277,7 @@ httpd_read(struct selector_key *key) {
     const enum httpd_state st = stm_handler_read(stm, key);
 
     if(DONE == st) {
+        register_access(&ATTACHMENT(key)->log_data);
         httpd_done(key);
     }
 }
@@ -287,7 +289,7 @@ httpd_write(struct selector_key *key) {
     const enum httpd_state st = stm_handler_write(stm, key);
 
     if(DONE == st) {
-
+        register_access(&ATTACHMENT(key)->log_data);
         httpd_done(key);
     }
 }
@@ -298,6 +300,7 @@ httpd_block(struct selector_key *key) {
     const enum httpd_state st = stm_handler_block(stm, key);
 
     if(DONE == st) {
+        register_access(&ATTACHMENT(key)->log_data);
         httpd_done(key);
     }
 }
@@ -517,6 +520,7 @@ static unsigned request_line_process(struct request_line * rl,struct selector_ke
     memcpy(data->log_data.origin_form, rl->request_target.origin_form, sizeof(rl->request_target.origin_form));
     memcpy(data->log_data.method, rl->method, sizeof(rl->method));
     data->log_data.origin_port = rl->request_target.port;
+    get_current_date_string(data->log_data.date);
     return ret;
 }
 ////////////////////////////////////////////////////////////////////////////////
@@ -1026,6 +1030,7 @@ static unsigned response_line_read(struct selector_key *key)
                 printf("codigo: %s\n", rl->response_line_data.status_code);
                 printf("message: %s\n", rl->response_line_data.status_message);
                 printf("version %d.%d\n", rl->response_line_data.version_major, rl->response_line_data.version_minor);
+                memcpy(data->log_data.status_code, rl->response_line_data.status_code, sizeof(rl->response_line_data.status_code));
                 ret = RESPONSE_LINE_WRITE;
                 if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
                 {
@@ -1187,8 +1192,9 @@ static void error_init(const unsigned state,struct selector_key * key){
     struct response_line_st * rl = &data->client.response_line;
 
 
-    status_code status = data->log_data.status;
+    status_code status = data->status;
     const struct error_response response = error_responses[status];
+    memcpy(data->log_data.status_code,response.status,strlen(response.status));
     rl->data.data_to_send_len = strlen(response.status_message) + 15;
     rl->data.data_to_send = (uint8_t *)malloc(rl->data.data_to_send_len);
     rl->data.data_to_send_written = 0;
