@@ -13,6 +13,7 @@
 extern const char *
 sockaddr_to_human(char *buff, const size_t buffsize,
                   const struct sockaddr *addr) {
+
     if(addr == 0) {
         strncpy(buff, "null", buffsize);
         return buff;

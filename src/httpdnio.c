@@ -6,6 +6,7 @@
 #include "../include/netutils.h"
 #include "../include/response_line.h"
 #include "../include/error_responses.h"
+#include "../include/register_log.h"
 #include <sys/socket.h>
 #include <stdio.h>
 #include <stdlib.h>  // malloc
@@ -189,7 +190,7 @@ struct httpd {
         struct copy_st copy;
     } origin;
 
-    status_code status;
+    struct log_data log_data;
 };
 
 /** Definición de handlers para cada estado */
@@ -487,6 +488,8 @@ static unsigned request_line_process(struct request_line * rl,struct selector_ke
         data->origin_addr_type = AF_INET6;
         data->origin_addr_len = sizeof(rl->request_target.host.ipv6);
         memcpy(&data->origin_addr, &rl->request_target.host.ipv6,data->origin_addr_len);
+        memcpy(&data->log_data.origin_addr.ipv6, &rl->request_target.host.ipv6, data->origin_addr_len);
+        data->log_data.origin_addr_type = ipv6_addr_t;
         ret = connect_to_origin(AF_INET6, key);
         break;
     case ipv4_addr_t:
@@ -495,11 +498,15 @@ static unsigned request_line_process(struct request_line * rl,struct selector_ke
         data->origin_addr_type = AF_INET;
         data->origin_addr_len = sizeof(rl->request_target.host.ipv4);
         memcpy(&data->origin_addr, &rl->request_target.host.ipv4, data->origin_addr_len);
+        memcpy(&data->log_data.origin_addr.ipv4, &rl->request_target.host.ipv4, data->origin_addr_len);
+        data->log_data.origin_addr_type = ipv4_addr_t;
         ret = connect_to_origin(AF_INET, key);
         break;
 
     case domain_addr_t:
         ret = REQUEST_RESOLVE;
+        memcpy(data->log_data.origin_addr.domain, rl->request_target.host.domain ,sizeof(rl->request_target.host.domain));
+        data->log_data.origin_addr_type = domain_addr_t;
         if (SELECTOR_SUCCESS != selector_set_interest(key->s, key->fd, OP_NOOP))
         {
             data->status = INTERNAL_SERVER_ERROR;
@@ -507,6 +514,9 @@ static unsigned request_line_process(struct request_line * rl,struct selector_ke
         }
         break;
     }
+    memcpy(data->log_data.origin_form, rl->request_target.origin_form, sizeof(rl->request_target.origin_form));
+    memcpy(data->log_data.method, rl->method, sizeof(rl->method));
+    data->log_data.origin_port = rl->request_target.port;
     return ret;
 }
 ////////////////////////////////////////////////////////////////////////////////
@@ -1177,7 +1187,7 @@ static void error_init(const unsigned state,struct selector_key * key){
     struct response_line_st * rl = &data->client.response_line;
 
 
-    status_code status = data->status;
+    status_code status = data->log_data.status;
     const struct error_response response = error_responses[status];
     rl->data.data_to_send_len = strlen(response.status_message) + 15;
     rl->data.data_to_send = (uint8_t *)malloc(rl->data.data_to_send_len);

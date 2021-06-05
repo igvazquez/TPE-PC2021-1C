@@ -31,6 +31,7 @@
 #include "../include/netutils.h"
 #include "../include/parser_utils.h"
 #include "../include/mime_chars.h"
+#include "../include/stdout_writer.h"
 #define MAX_SOCKETS 1024
 
 #define STDIN_FILENO 0
@@ -190,6 +191,31 @@ main(const int argc, const char **argv) {
         err_msg = "registering fd IPV6";
         goto finally;
     }
+/////////////////////////////////////////////////////////////////
+//  NON BLOCKING STD OUT REGISTERING
+/////////////////////////////////////////////////////////////////
+    stdout_writer_initialize(&selector);
+ /*   const struct fd_handler stdout_handler = {
+        .handle_read       = NULL,
+        .handle_write      = stdout_write,
+        .handle_close      = NULL, // nada que liberar
+    };
+
+    // Setting STDOUT has non blocking
+    if (selector_fd_set_nio(1) == -1)
+    {
+        err_msg = "setting stdout as non-blocking";
+        goto finally;
+    }
+
+    ss = selector_register(selector, 1, &stdout_handler,OP_NOOP, get_stdout_writer_data());
+    if(ss != SELECTOR_SUCCESS) {
+        err_msg = "registering fd STDOUT";
+        goto finally;
+    }
+*/
+////////////////////////////////////////////////////////////////
+
     for(;!done;) {
         err_msg = NULL;
         ss = selector_select(selector);

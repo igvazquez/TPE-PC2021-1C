@@ -44,6 +44,22 @@ enum {
     MAX_IPV6_LENGTH   =  39
 };
 
+
+enum addr_type {
+        domain_addr_t,
+        ipv4_addr_t,
+        ipv6_addr_t,
+};
+    
+union host_addr{
+    /** especificado con un nombre que se debe resolver (NUL-terminated) */
+    char domain[MAX_FQDN_LENGTH + 1];
+    /** especificada como una dirección IPV4 */
+    struct sockaddr_in ipv4;
+    /** especificada como una dirección IPV6 */
+    struct sockaddr_in6 ipv6;
+};
+
 /*
  * request-line   = method SP request-target SP HTTP-version CRLF
  * method         = token
@@ -67,8 +83,9 @@ struct request_line {
      * GET | POST | …
      */
     uint8_t method[MAX_METHOD_LENGTH + 1];
-    
-   
+
+ 
+
 
     struct {
         // el tipo de request_target.
@@ -78,24 +95,11 @@ struct request_line {
         } type;
 
         /** declara como está especificado el host*/
-        enum request_line_addr_type {
-            domain_addr_t,
-            ipv4_addr_t,
-            ipv6_addr_t,
-        } host_type;
-        
-    
-        // host y port aplican a todos
+        enum addr_type host_type;
+
 
         /** el host al cual hay que conectarse puede estar escrito de tres formas */
-        union {
-            /** especificado con un nombre que se debe resolver (NUL-terminated) */
-            char                domain[MAX_FQDN_LENGTH + 1];
-            /** especificada como una dirección IPV4 */
-            struct sockaddr_in  ipv4;
-            /** especificada como una dirección IPV6 */
-            struct sockaddr_in6 ipv6;
-        } host;
+        union host_addr host;
 
         /** port in network byte order */
         in_port_t port;
@@ -106,7 +110,7 @@ struct request_line {
         // 5.3.1.  origin-form
         // The most common form of request-target is the origin-form.
         // origin-form    = absolute-path [ "?" query ]
-        uint8_t origin_form[MAX_ORIGIN_FORM];
+        uint8_t origin_form[MAX_ORIGIN_FORM+1];
     } request_target;
 
 };
