@@ -14,21 +14,25 @@ void set_address_string(struct sockaddr_storage address,char *buff,int addr_leng
 
     switch(address.ss_family){
         case AF_INET:
+         
             if (inet_ntop(AF_INET, &(((struct sockaddr_in *)&address)->sin_addr), buff, addr_length) == 0) {
                 strncpy(buff, "unknown ip", addr_length);
                 buff[addr_length - 1] = 0;
-            
+               
             }     
             break;
 
         case AF_INET6:
+            
             if (inet_ntop(AF_INET6, &(((struct sockaddr_in6 *)&address)->sin6_addr), buff, addr_length) == 0) {
                 strncpy(buff, "unknown ip", addr_length);
-                buff[addr_length - 1] = 0; 
+                buff[addr_length - 1] = 0;
+        
             } 
             break;
         
     }
+
 }
 
 char* get_origin_string(union host_addr origin_addr,enum addr_type type,char* origin_form,in_port_t origin_port){
@@ -37,14 +41,17 @@ char* get_origin_string(union host_addr origin_addr,enum addr_type type,char* or
     size_t address_len;
     switch (type){  
     case ipv4_addr_t:
+    
         address_len = INET_ADDRSTRLEN + origin_len + MAX_PORT_SIZE + 2;
         address = (char *)calloc(1,address_len);
         if(address == NULL){
             return NULL;
         }
         sockaddr_to_human(address,address_len,(const struct sockaddr*)&origin_addr.ipv4);
+     
         break;
     case ipv6_addr_t:
+  
         address_len = INET6_ADDRSTRLEN + origin_len + MAX_PORT_SIZE + 2;
         address = (char *)calloc(1,address_len);
         if(address == NULL){
@@ -53,6 +60,7 @@ char* get_origin_string(union host_addr origin_addr,enum addr_type type,char* or
         sockaddr_to_human(address,address_len,(const struct sockaddr*)&origin_addr.ipv6);
         break;
     case domain_addr_t:
+  
         address_len = MAX_FQDN_LENGTH + origin_len + MAX_PORT_SIZE + 2;
         address = (char *)calloc(1,address_len);
         if(address == NULL){
@@ -67,14 +75,14 @@ char* get_origin_string(union host_addr origin_addr,enum addr_type type,char* or
         size_t host_len = strlen(address);
         memcpy(address + host_len, origin_form, origin_len); 
     }
-
+    printf("origin address: %s\n",address);
     return address;
 }
 
 void get_current_date_string(char * date){
     time_t t = time(NULL);
     struct tm *timeptr = localtime(&t);
-    strftime(date,MAX_DATE_LENGTH,"%Y-%m-%dT%TZ",timeptr);
+    strftime(date,MAX_DATE_LENGTH+1,"%Y-%m-%dT%TZ",timeptr);
 }
 
 static char* get_protocol_string(enum protocol protocol){
@@ -98,19 +106,22 @@ static void log_register(struct log_data *log_data, char reg_type) {
     char *format = NULL;
     size_t wBytes;
     struct stdout_writer* writer_data = get_stdout_writer_data();
+    char buffer[100];
     uint8_t * write_ptr = buffer_write_ptr(&writer_data->wb,&wBytes);
     int n = 0;
     if(reg_type == 'A'){
-            int client_addr_length = log_data->client_addr.ss_family == AF_INET ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
+            int client_addr_length = log_data->client_addr->ss_family == AF_INET ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
+
             char client_address_str[client_addr_length];
-            set_address_string(log_data->client_addr, client_address_str ,client_addr_length);
+            set_address_string(*log_data->client_addr, client_address_str ,client_addr_length);
             char* format = "%s\tA\t%s\t%d\t%s\t%s\t%s\n";
-            n = snprintf((char*)write_ptr,wBytes,format, log_data->date,client_address_str, ntohs(log_data->origin_port), log_data->method, get_origin_string(log_data->origin_addr,log_data->origin_addr_type,log_data->origin_form,log_data->origin_port), log_data->status_code);
+            n = snprintf(buffer,100,format, log_data->date,client_address_str, ntohs(get_address_port(*log_data->client_addr)), log_data->method, get_origin_string(log_data->origin_addr,log_data->origin_addr_type,log_data->origin_form,log_data->origin_port), log_data->status_code);
             
     }else if(reg_type == 'P'){
         char *origin_addr = get_origin_string(log_data->origin_addr, log_data->origin_addr_type, NULL, log_data->origin_port);
         char *host;
         char *port;
+
         if(origin_addr != NULL){
             host = strtok(origin_addr, ":");
             port = strtok(NULL, ":");
@@ -119,13 +130,14 @@ static void log_register(struct log_data *log_data, char reg_type) {
             port = "UNKOWN";
         }
     
-        format = "%s\tP\t%s\t%s\t%d\t%s\t%s\n";
-        n = snprintf((char*)write_ptr,wBytes,format, log_data->date,get_protocol_string(log_data->protocol),host, port, log_data->user, log_data->password);
+        format = "%s\tP\t%s\t%s\t%s\t%s\t%s\n";
+        n = snprintf(buffer,100,format, log_data->date,get_protocol_string(log_data->protocol),host, port, log_data->user, log_data->password);
         free(origin_addr);
     }else{
         return;
     }
-    if ((unsigned)n > wBytes){
+    printf("%s",buffer);
+    /*  if ((unsigned)n > wBytes){
         buffer_write_adv(&writer_data->wb,wBytes);
     }
     else{
@@ -133,7 +145,7 @@ static void log_register(struct log_data *log_data, char reg_type) {
     }
    
 
-    selector_set_interest(*writer_data->selector,1, OP_WRITE);
+    selector_set_interest(*writer_data->selector,1, OP_WRITE);*/
 }
 
 void register_access(struct log_data *log_data){

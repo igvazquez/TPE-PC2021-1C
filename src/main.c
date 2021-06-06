@@ -194,7 +194,7 @@ main(const int argc, const char **argv) {
 /////////////////////////////////////////////////////////////////
 //  NON BLOCKING STD OUT REGISTERING
 /////////////////////////////////////////////////////////////////
-    stdout_writer_initialize(&selector);
+    //stdout_writer_initialize(&selector);
  /*   const struct fd_handler stdout_handler = {
         .handle_read       = NULL,
         .handle_write      = stdout_write,

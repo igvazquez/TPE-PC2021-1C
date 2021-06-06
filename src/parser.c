@@ -3,7 +3,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdio.h>
-
+#include <ctype.h>
 #include "../include/parser.h"
 
 /* CDT del parser */
@@ -82,3 +82,13 @@ parser_no_classes(void) {
     return classes;
 }
 
+int stricmp (char *s1,char *s2)
+{
+    
+    for(unsigned i=0; s1[i]!='\0'; i++)
+    {
+        if(toupper(s1[i])!=toupper(s2[i]) )
+            return 1;           
+    }
+    return 0;
+}

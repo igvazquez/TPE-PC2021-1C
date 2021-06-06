@@ -110,4 +110,6 @@ parser_no_classes(void);
 
 void parser_set_state(struct parser *p, unsigned state);
 
+int stricmp(char *s1, char *s2);
+
 #endif

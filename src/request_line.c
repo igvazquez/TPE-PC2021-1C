@@ -493,7 +493,7 @@ void request_line_parser_init(struct request_line_parser *parser)
    parser->rl_parser = parser_init(init_char_class(), request_line_parser_definition());
    if (parser->rl_parser == NULL)
    {
-       printf("parser_init returned null");
+   
        abort();
     }
    parser->parsed_info.port = 0; 
@@ -522,7 +522,7 @@ static status_code process_event(const struct parser_event * e,request_line_pars
         break;
     case RL_METHOD_END:
         parsed_info->method_buffer[parsed_info->method_counter] = '\0';
-        if(strcmp(parsed_info->method_buffer,"CONNECT") == 0){
+        if(stricmp(parsed_info->method_buffer,"CONNECT") == 0){
             set_authority_form(parser->rl_parser);
         }
         break;
@@ -548,7 +548,7 @@ static status_code process_event(const struct parser_event * e,request_line_pars
         parsed_info->port += (e->data[0] - '0');
         break;
     case RL_IPV6_0:
-        printf("IPV6 0\n");
+   
         parsed_info->host_type = ipv6_addr;
         break;
     case RL_IPV6:
@@ -574,8 +574,8 @@ static status_code process_event(const struct parser_event * e,request_line_pars
         parsed_info->version_minor = e->data[0] - '0';  
         break;
     case RL_DONE:
-        if(parsed_info->origin_form_counter == 0){
-            printf("RL DONE\n");
+        if(parsed_info->origin_form_counter == 0 && stricmp(parsed_info->method_buffer,"CONNECT") != 0){
+         
             parsed_info->origin_form_buffer[parsed_info->origin_form_counter++] =  '/';
             parsed_info->origin_form_buffer[parsed_info->origin_form_counter] =  '\0';
         }
@@ -597,8 +597,7 @@ static void fill_request_line_data(struct request_line_parser * parser, status_c
     int i6pton_ret, i4pton_ret;
     switch(pi.host_type){
         case ipv6_addr:
-           
-            printf("Probando si ipv6: %s es valida\n", pi.host.ipv6_buffer);
+         
             if((i6pton_ret=inet_pton(AF_INET6,pi.host.ipv6_buffer,&(rl->request_target.host.ipv6.sin6_addr))) == 1){
                 // La ip ingresada es ipv6
                 rl->request_target.host_type = ipv6_addr_t;
@@ -612,12 +611,12 @@ static void fill_request_line_data(struct request_line_parser * parser, status_c
             break;
         case domain_or_ipv4_addr:
             
-            printf("Probando si ipv4: %s es valida\n", pi.host.domain_or_ipv4_buffer);
+         
             if((i4pton_ret=inet_pton(AF_INET,pi.host.domain_or_ipv4_buffer,&(rl->request_target.host.ipv4.sin_addr))) == 1){
                     // La ip ingresada es ipv4
                 rl->request_target.host_type = ipv4_addr_t;
             }else if(i4pton_ret == 0){
-                printf("%s es un domain name\n", pi.host.domain_or_ipv4_buffer);
+        
                 // la ipv6 no es correcta => considero que es un domain name
                  rl->request_target.host_type = domain_addr_t;
                  memcpy(rl->request_target.host.domain, pi.host.domain_or_ipv4_buffer, pi.host_counter+1);
@@ -674,13 +673,13 @@ bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, st
 
     assert(parser != NULL && buffer != NULL);
     const struct parser_event *e;
-
+    uint8_t c;
     while (buffer_can_read(buffer))
     {
-        uint8_t c = buffer_read(buffer);
-        printf("Leo: %c\n", c);
+        c = buffer_read(buffer);
+      
         e = parser_feed(parser->rl_parser, c);
-        printf("Estado: %d\n", e->type);
+     
         do{
             if((*status = process_event(e,parser))){
                 //dio error

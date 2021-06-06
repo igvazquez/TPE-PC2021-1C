@@ -102,18 +102,22 @@ wait(struct parser_event *ret, const uint8_t c) {
 // Transiciones
 static const struct parser_state_transition ST_HTTP_VERSION_NAME0[] =  {
         {.when = 'H',        .dest = HTTP_VERSION_NAME1,         .act1 = http_name,},
+        {.when = 'h',        .dest = HTTP_VERSION_NAME1,         .act1 = http_name,},
         {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 static const struct parser_state_transition ST_HTTP_VERSION_NAME1[] =  {
         {.when = 'T',        .dest = HTTP_VERSION_NAME2,         .act1 = http_name,},
+        {.when = 't',        .dest = HTTP_VERSION_NAME2,         .act1 = http_name,},
         {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 static const struct parser_state_transition ST_HTTP_VERSION_NAME2[] =  {
         {.when = 'T',        .dest = HTTP_VERSION_NAME3,         .act1 = http_name,},
+        {.when = 't',        .dest = HTTP_VERSION_NAME3,         .act1 = http_name,},
         {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 static const struct parser_state_transition ST_HTTP_VERSION_NAME3[] =  {
         {.when = 'P',        .dest = HTTP_VERSION_NAME4,         .act1 = http_name,},
+        {.when = 'p',        .dest = HTTP_VERSION_NAME4,         .act1 = http_name,},
         {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 static const struct parser_state_transition ST_HTTP_VERSION_NAME4[] =  {
@@ -229,7 +233,7 @@ void response_line_parser_init(struct response_line_parser *parser)
     parser->rl_parser = parser_init(init_char_class(), response_line_parser_definition());
     if (parser->rl_parser == NULL)
     {
-        printf("parser_init returned null");
+   
         abort();
     }
 }
@@ -253,6 +257,7 @@ static status_code process_event(const struct parser_event * e, response_line_pa
             break;
         case RS_STATUS_MESSAGE:
             if(rl->message_counter >= MAX_MSG_LENGTH){
+                printf("counter >= max_msg_length\n");
                 status = BAD_REQUEST;
                 goto finally;
             }
@@ -287,9 +292,9 @@ bool response_line_parser_consume(buffer *buffer, response_line_parser *parser, 
     while (buffer_can_read(buffer))
     {
         uint8_t c = buffer_read(buffer);
-        printf("Leo: %c\n", c);
+    
         e = parser_feed(parser->rl_parser, c);
-        printf("Estado: %d\n", e->type);
+  
         do{
             if (response_line_is_done(e->type, status))
             {

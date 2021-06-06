@@ -174,7 +174,7 @@ typedef struct request_line_parser{
     struct request_line *request_line;
     struct parsed_info parsed_info;
 } request_line_parser;
-
+const struct parser_definition *request_line_parser_definition(void);
 void request_line_parser_init(struct request_line_parser *parser);
 //enum start_line_state start_line_parser_feed(start_line_parser *parser, uint8_t c);
 bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, status_code * status);

@@ -54,6 +54,7 @@ selector_error(const selector_status status) {
 static void
 wake_handler(const int signal) {
     // nada que hacer. está solo para interrumpir el select
+    printf("wake handler\n");
 }
 
 // señal a usar para las notificaciones de resolución
@@ -231,12 +232,12 @@ items_update_fdset_for_fd(fd_selector s, const struct item * item) {
   
     if(ITEM_USED(item)) {
         if(item->interest & OP_READ) {
-             //printf("seteo fd %d a OP_READ\n", item->fd);
+         
             FD_SET(item->fd, &(s->master_r));
         }
     
         if(item->interest & OP_WRITE) {
-           // printf("seteo fd %d a OP_WRITE\n", item->fd);
+         
             FD_SET(item->fd, &(s->master_w));
         }
         
@@ -254,7 +255,7 @@ ensure_capacity(fd_selector s, const size_t n) {
 
     const size_t element_size = sizeof(*s->fds);
     if(n < s->fd_size) {
-        printf("ensure capacity %d < fd_size",n);
+      
         // nada para hacer, entra...
         ret = SELECTOR_SUCCESS;
     } else if(n > ITEMS_MAX_SIZE) {
@@ -262,10 +263,10 @@ ensure_capacity(fd_selector s, const size_t n) {
         // me estás pidiendo más de lo que se puede.
         ret = SELECTOR_MAXFD;
     } else if(NULL == s->fds) {
-          printf("s->fds == null\n");
+       
         // primera vez.. alocamos
         const size_t new_size = next_capacity(n);
-        printf("new_size = %d\n", new_size);
+     
         s->fds = calloc(new_size, element_size);
         if(NULL == s->fds) {
             ret = SELECTOR_ENOMEM;
@@ -275,7 +276,7 @@ ensure_capacity(fd_selector s, const size_t n) {
         }
     } else {
         // hay que agrandar...
-        printf("hay que agrandar\n");
+   
         const size_t new_size = next_capacity(n);
         if (new_size > SIZE_MAX/element_size) { // ver MEM07-C
             ret = SELECTOR_ENOMEM;
@@ -487,14 +488,13 @@ handle_iteration(fd_selector s) {
                     }
                 }
             }
-            //printf("slave_w dir: %p\n",&s->slave_w);
-          
+
    
             if (FD_ISSET(i, &(aux->slave_w)))
             {
            
                 if(OP_WRITE & item->interest) {
-                    // printf("quiero escribir: %d\n",item->fd);
+                    
                     if(0 == item->handler->handle_write) {
                         assert(("OP_WRITE arrived but no handler. bug!" == 0));
                     } else {

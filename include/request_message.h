@@ -4,6 +4,7 @@
 #include "../include/parser_utils.h"
 #include "../include/parser.h"
 #include "../include/buffer.h"
+#include "../include/register_log.h"
 #include <stdbool.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -35,6 +36,11 @@ const struct parser_definition * request_headers_parser(void);
 
 typedef struct request_message_parser
 {
+
+    bool save_data;
+    uint8_t *data ;
+    uint8_t data_index;
+    unsigned data_size;
     // array de headers los cuales me interesa detectar
     struct header *headers_to_detect;
     // cantidad de headers a tener en cuenta en headers_to_detect
@@ -75,7 +81,7 @@ typedef enum
 
 struct header{
     // funcion que corre cuando se termina de leer el value del header
-    void    (*on_value_end)(struct request_message_parser*parser);
+    void    (*on_value_end)(struct request_message_parser*parser,struct log_data * log_data);
 
    
     // parser del header name
@@ -98,11 +104,12 @@ struct header{
 };
 
 void header_parsers_feed(const struct parser_event* incoming,struct request_message_parser* parser);
-void request_message_parser_init(struct request_message_parser*parser, unsigned header_quantity);
-void add_header(struct request_message_parser *parser, char *header_name,header_interest interest ,const char* replacement, void (*on_value_end)(struct request_message_parser*parser));
+void request_message_parser_init(struct request_message_parser*parser, unsigned header_quantity,bool save_data);
+void add_header(struct request_message_parser *parser, char *header_name,header_interest interest ,const char* replacement, void (*on_value_end)(struct request_message_parser*parser,struct log_data *log_data));
 void request_message_parser_reset(struct request_message_parser *parser);
 void request_message_parser_destroy(struct request_message_parser *parser);
-bool request_message_parser_process(const struct parser_event *e, request_message_parser *parser, uint8_t *write_buffer, unsigned *write_index,bool * error);
+bool request_message_parser_process(const struct parser_event *e, request_message_parser *parser,bool * error,struct log_data * log_data);
 char *get_detection_value(struct request_message_parser *parser);
 void set_content_length(struct request_message_parser *parser, long content_length);
+bool request_message_parser_consume(struct request_message_parser *parser, buffer *b, bool *error,struct log_data * log_data);
 #endif

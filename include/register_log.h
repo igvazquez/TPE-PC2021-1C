@@ -4,13 +4,12 @@
 #include <time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include "../include/request_message.h"
 #include "../include/selector.h"
 #include "../include/request_line.h"
 #include "../include/response_line.h"
 #include "../include/error_responses.h"
 
-#define MAX_DATE_LENGTH 20 // Ej: 202-06-15T19:30:52Z\0
+#define MAX_DATE_LENGTH 20// Ej: 202-06-15T19:30:52Z\0
 
 
 enum protocol {
@@ -20,9 +19,9 @@ enum protocol {
 
 
 struct log_data {
-    char date[MAX_CODE_LENGTH+1];
+    char date[MAX_DATE_LENGTH+1];
     //Access
-    struct sockaddr_storage client_addr;
+    struct sockaddr_storage* client_addr;
     in_port_t client_port;
     char method[MAX_METHOD_LENGTH+1];
     union host_addr origin_addr;
