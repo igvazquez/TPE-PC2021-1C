@@ -213,3 +213,6 @@ char *get_ipv6_addr(){
 unsigned short get_port(){
     return args->httpd_port;
 }
+bool get_disectors_enabled(){
+    return args->disectors_enabled;
+}

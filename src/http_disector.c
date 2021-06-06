@@ -16,8 +16,7 @@ void decode_credentials(struct request_message_parser * parser,struct  log_data*
     assert(parser != NULL && parser->current_detection != NULL);
     char *value = get_detection_value(parser);
     char *auth_type = strtok(value, " ");
-    
-    printf("auth_type: %s\n", auth_type);
+
   
     // Podria extenderse a desencodear otros tipos de Authorization
     if(strcmp(auth_type,"Basic") == 0){
@@ -44,7 +43,7 @@ void http_disector_init(struct http_disector *disector,struct log_data* log_data
 void http_disector_reset(struct http_disector* disector){
     parser_reset(disector->rl_parser);
     request_message_parser_reset(&disector->rm_parser);
-    disector->state = REQUEST_LINE;
+    disector->state = HTTP_REQUEST_LINE;
 }
 
 void http_disector_feed(struct http_disector *disector, uint8_t c){
@@ -55,22 +54,22 @@ void http_disector_feed(struct http_disector *disector, uint8_t c){
   
    switch (disector->state)
    {
-   case REQUEST_LINE:
+   case HTTP_REQUEST_LINE:
 
        e = parser_feed(disector->rl_parser, c);
        if (e->type == RL_DONE)
        {
          
-           disector->state = HEADERS;
+           disector->state = HTTP_HEADERS;
        }
        else if (e->type == RL_UNEXPECTED)
        {
            
            parser_reset(disector->rl_parser);
-           disector->state = REQUEST_LINE;
+           disector->state = HTTP_REQUEST_LINE;
        }
        break;
-   case HEADERS:
+   case HTTP_HEADERS:
  
        e = parser_feed(disector->rm_parser.rm_parser, c);
        done = request_message_parser_process(e, &disector->rm_parser, &error,disector->log_data);

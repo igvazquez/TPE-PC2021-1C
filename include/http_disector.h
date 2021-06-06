@@ -6,8 +6,8 @@
 
 enum http_disector_state
 {
-    REQUEST_LINE,
-    HEADERS,
+    HTTP_REQUEST_LINE,
+    HTTP_HEADERS,
 };
 
 struct http_disector{

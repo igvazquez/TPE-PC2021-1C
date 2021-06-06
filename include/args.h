@@ -43,5 +43,7 @@ parse_args(const int argc,const char **argv);
 char *get_ipv4_addr();
 char *get_ipv6_addr();
 unsigned short get_port();
+bool get_disectors_enabled();
+
 
 #endif

@@ -7,7 +7,9 @@
 #include "../include/response_line.h"
 #include "../include/error_responses.h"
 #include "../include/http_disector.h"
+#include "../include/pop3_disector.h"
 #include "../include/register_log.h"
+#include "../include/args.h"
 #include <sys/socket.h>
 #include <stdio.h>
 #include <stdlib.h>  // malloc
@@ -196,6 +198,7 @@ struct httpd {
  
     /* password disectors */
     struct http_disector http_disector;
+    struct pop3_disector pop3_disector;
 };
 
 /** Definición de handlers para cada estado */
@@ -371,6 +374,7 @@ static struct httpd *httpd_new(int client_fd){
     buffer_init(&ret->from_origin_buffer, N(ret->from_origin_buffer_data), ret->from_origin_buffer_data);
 
     http_disector_init(&ret->http_disector,&ret->log_data);
+    pop3_disector_init(&ret->pop3_disector,&ret->log_data);
     return ret;
 }
 
@@ -1253,7 +1257,12 @@ static void copy_init(const unsigned state,struct selector_key *key){
     copy->wb = &data->from_origin_buffer;
     if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
     {
-        data->status = INTERNAL_SERVER_ERROR;
+        abort();
+    }
+
+      if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_READ))
+    {
+       
         abort();
     }
 
@@ -1295,9 +1304,8 @@ static unsigned copy_read(struct selector_key *key){
     size_t wbytes;
     /* quiero escribir en el read buffer de copy */
     uint8_t *read_buffer_ptr = buffer_write_ptr(copy->rb, &wbytes);
-    printf("wbytes = %ld\n", wbytes);
     ssize_t numBytesRead = recv(key->fd, read_buffer_ptr, wbytes,0);
-    printf("copy read numBytesRead = %ld\n", numBytesRead);
+
     unsigned ret = COPY;
 
    
@@ -1321,9 +1329,13 @@ static unsigned copy_read(struct selector_key *key){
     }else{
         // se leyó algo
         buffer_write_adv(copy->rb, numBytesRead);
-        if(copy->fd == ATTACHMENT(key)->client_fd){
-            // Estoy leyendo los datos del cliente, por lo tanto quiero ver si me envia una HTTP Request
+        if(get_disectors_enabled() && copy->fd == ATTACHMENT(key)->client_fd){
+            // Sniffeo lo que envia el cliente
+                printf("SNIFFEO ESCRITURA CLIENTE\n");
+            // Quiero ver si es una HTTP Request
             http_disector_consume(&ATTACHMENT(key)->http_disector,copy->rb);
+            // Quiero ver si es un mensaje POP3 
+            pop3_disector_consume(&ATTACHMENT(key)->pop3_disector,copy->rb);
         }
         //print_buffer(copy->rb);
         //print_buffer(copy->wb);
@@ -1342,9 +1354,7 @@ static unsigned copy_write(struct selector_key *key){
     size_t rbytes;
     /* quiero leer en el write buffer de copy */
     uint8_t *write_buffer_ptr = buffer_read_ptr(copy->wb, &rbytes);
-    printf("rbytes %ld \n", rbytes);
     ssize_t numBytesWritten = send(key->fd, write_buffer_ptr, rbytes,MSG_NOSIGNAL);
-    printf("copy write numBytesWritten = %ld\n", numBytesWritten);
     unsigned ret = COPY;
 
  
@@ -1370,12 +1380,15 @@ static unsigned copy_write(struct selector_key *key){
 
     }else{
         // se escribió algo
+
+        if(get_disectors_enabled() && copy->fd == ATTACHMENT(key)->client_fd){
+            // Sniffeo lo que lee el cliente
+            printf("SNIFFEO LECTURA CLIENTE\n");
+            // Quiero ver si es un mensaje POP3 
+            pop3_disector_consume(&ATTACHMENT(key)->pop3_disector,copy->wb);
+        }
         buffer_read_adv(copy->wb, numBytesWritten);
-        printf("%d)Escribi %ld bytes\n",key->fd, numBytesWritten);
-        printf("READ BUFFER\n");
-        print_buffer(copy->rb);
-        printf("\nWRITE BUFFER\n");
-        print_buffer(copy->wb);
+
     }
     selector_set_new_interest(copy,key->s);
     selector_set_new_interest(copy->copy_to,key->s);
