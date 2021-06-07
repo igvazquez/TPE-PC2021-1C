@@ -54,7 +54,6 @@ selector_error(const selector_status status) {
 static void
 wake_handler(const int signal) {
     // nada que hacer. está solo para interrumpir el select
-    printf("wake handler\n");
 }
 
 // señal a usar para las notificaciones de resolución
@@ -489,7 +488,8 @@ handle_iteration(fd_selector s) {
                 }
             }
 
-   
+
+            //FIXME CRASHEA ACA
             if (FD_ISSET(i, &(aux->slave_w)))
             {
            

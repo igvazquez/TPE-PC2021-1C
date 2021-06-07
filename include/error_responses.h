@@ -6,7 +6,7 @@
 
 #include <stdint.h>
 
-typedef enum status_code{
+typedef enum error_status_code{
     OK =0,
     BAD_REQUEST,
     FORBIDDEN,
@@ -19,7 +19,7 @@ typedef enum status_code{
     GATEWAY_TIMEOUT,
     HTTP_VERSION_NOT_SUPPORTED,
     LOOP_DETECTED
-} status_code;
+} error_status_code;
 
 struct error_response{
     char* status;

@@ -10,7 +10,7 @@ struct users {
     char *pass;
 };
 
-struct doh {
+struct doh_args {
     char           *host;
     char           *ip;
     unsigned short  port;
@@ -28,7 +28,7 @@ struct httpdargs {
 
     bool            disectors_enabled;
 
-    struct doh      doh;
+    struct doh_args      doh;
     struct users    users[MAX_USERS];
 };
 
@@ -45,5 +45,7 @@ char *get_ipv6_addr();
 unsigned short get_port();
 bool get_disectors_enabled();
 
+
+struct doh_args get_doh_info();
 
 #endif

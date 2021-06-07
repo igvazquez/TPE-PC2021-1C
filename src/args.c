@@ -216,3 +216,7 @@ unsigned short get_port(){
 bool get_disectors_enabled(){
     return args->disectors_enabled;
 }
+
+struct doh_args get_doh_info(){
+    return args->doh;
+}

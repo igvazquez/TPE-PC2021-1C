@@ -511,7 +511,7 @@ static void set_authority_form(struct parser* p){
     parser_set_state(p, HOST0);
 }
 
-static status_code process_event(const struct parser_event * e,request_line_parser *parser){
+static error_status_code process_event(const struct parser_event * e,request_line_parser *parser){
     struct parsed_info *parsed_info= &parser->parsed_info;
     switch (e->type)
     {
@@ -590,7 +590,7 @@ static status_code process_event(const struct parser_event * e,request_line_pars
 }
 
 
-static void fill_request_line_data(struct request_line_parser * parser, status_code *status){
+static void fill_request_line_data(struct request_line_parser * parser, error_status_code *status){
     printf("\nfill request line data\n");
     struct request_line *rl = parser->request_line;
     struct parsed_info pi = parser->parsed_info;
@@ -669,7 +669,7 @@ finally:
     return;
 }
 
-bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, status_code * status){
+bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, error_status_code * status){
 
     assert(parser != NULL && buffer != NULL);
     const struct parser_event *e;
@@ -711,20 +711,17 @@ void request_line_parser_reset(struct request_line_parser *parser){
 
 
 
-bool request_line_is_done(enum request_line_event_type type, status_code *status){
+bool request_line_is_done(enum request_line_event_type type, error_status_code *status){
 
     switch(type){
         case RL_UNEXPECTED:
             *status = BAD_REQUEST;
             return true;
-            break;
         case RL_DONE:
             *status = OK;
             return true;
-            break;
         default:
             *status = OK;
             return false;
-        };
-        return false;
+        }
 }

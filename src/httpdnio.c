@@ -10,6 +10,7 @@
 #include "../include/pop3_disector.h"
 #include "../include/register_log.h"
 #include "../include/args.h"
+#include "../include/doh_client.h"
 #include <sys/socket.h>
 #include <stdio.h>
 #include <stdlib.h>  // malloc
@@ -40,6 +41,8 @@ static void httpd_write  (struct selector_key *key);
 static void httpd_block  (struct selector_key *key);
 static void httpd_close  (struct selector_key *key);
 
+
+static error_status_code errno_response(int e);
 
 static void connecting_init(const unsigned state,struct selector_key *key);
 static unsigned connecting_done(struct selector_key *key);
@@ -77,7 +80,7 @@ static void copy_init(const unsigned state,struct selector_key *key);
 static unsigned copy_read(struct selector_key *key);
 static unsigned copy_write(struct selector_key *key);
 
-static status_code errno_response(int e);
+
 
 /** maquina de estados general */
 enum httpd_state {
@@ -121,6 +124,9 @@ struct request_line_st{
     struct request_line request_line_data;
     struct request_line_parser parser;
     struct data_to_send data;
+
+    //addr resolution
+    address_resolve_info resolve_info;
 };
 
 struct response_line_st {
@@ -194,11 +200,12 @@ struct httpd {
     } origin;
 
     struct log_data log_data;
-    enum status_code status;
+    enum error_status_code status;
  
     /* password disectors */
     struct http_disector http_disector;
     struct pop3_disector pop3_disector;
+
 };
 
 /** Definición de handlers para cada estado */
@@ -539,14 +546,25 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
 
     case domain_addr_t:
 
-        ret = REQUEST_RESOLVE;
-        memcpy(data->log_data.origin_addr.domain, rl->request_line_data.request_target.host.domain ,strlen((char*)rl->request_line_data.request_target.host.domain)+1);
-        data->log_data.origin_addr_type = domain_addr_t;
-        if (SELECTOR_SUCCESS != selector_set_interest(key->s, key->fd, OP_NOOP))
-        {
-            data->status = INTERNAL_SERVER_ERROR;
+
+
+        if(resolve(rl->request_line_data.request_target.host.domain,key->s,data->client_fd, &rl->resolve_info) != -1){
+            ret = REQUEST_RESOLVE;
+
+            memcpy(data->log_data.origin_addr.domain, rl->request_line_data.request_target.host.domain ,strlen((char*)rl->request_line_data.request_target.host.domain)+1);
+            data->log_data.origin_addr_type = domain_addr_t;
+
+
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s, key->fd, OP_NOOP)){
+                data->status = INTERNAL_SERVER_ERROR;
+                ret = ERROR;
+            }
+        }else{
+            data->status = errno_response(errno);
             ret = ERROR;
+            goto finally;
         }
+
         break;
     }
    //   printf("1 origin form: %s: %d\n",(char*) data->client.request_line.request_line_data.request_target.origin_form, strlen((char *)rl->request_line_data.request_target.origin_form));
@@ -555,13 +573,42 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
     strcpy(data->log_data.method, (char*)rl->request_line_data.method);
     data->log_data.origin_port = rl->request_line_data.request_target.port;
     get_current_date_string(data->log_data.date);
-    return ret;
+    finally:
+        return ret;
 }
 ////////////////////////////////////////////////////////////////////////////////
 // REQUEST RESOLVE
 ////////////////////////////////////////////////////////////////////////////////
 static unsigned request_resolve_done(struct selector_key * key){
     struct httpd *data = ATTACHMENT(key);
+
+    struct request_line_st * rl = &data->client.request_line;
+    if(rl->resolve_info.qty == 0){
+        if(rl->resolve_info.type == IPV4){
+            rl->resolve_info.type = IPV6;
+            return request_line_process(rl,key);
+        }else{
+            //TODO agregar status
+            data->status = INTERNAL_SERVER_ERROR;
+            return ERROR;
+        }
+    }else{
+        struct sockaddr_storage storage  = rl->resolve_info.storage[rl->resolve_info.qty--];
+        if(rl->resolve_info.type == IPV4){
+            struct sockaddr_in  * sin = (struct sockaddr_in * ) &storage;
+            sin->sin_port = rl->request_line_data.request_target.port;
+
+        }else{
+            struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) &storage;
+            sin6->sin6_port = rl->request_line_data.request_target.port;
+
+        }
+        data->origin_addr_len = sizeof(storage);
+        memcpy(&data->origin_addr,&storage,data->origin_addr_len);
+
+        return connect_to_origin(storage.ss_family,key);
+    }
+
     return ERROR;
 }
 
@@ -576,11 +623,18 @@ static unsigned connect_to_origin(int origin_family,struct selector_key*key){
   //  sockaddr_to_human(buff2, 50, (const struct sockaddr*)&data->origin_addr);
     //printf("%s\n", buff2);
 
+    bool retry_connect = false;
+    int origin_fd = data->origin_fd;
 
+    if(origin_fd != -1){
+        retry_connect = true;
+        close(origin_fd);
+        selector_unregister_fd(key->s,origin_fd);
+    }
 
     data->status = OK;
     unsigned ret = CONNECTING;
-    int origin_fd = socket(origin_family, SOCK_STREAM, IPPROTO_TCP);
+    origin_fd = socket(origin_family, SOCK_STREAM, IPPROTO_TCP);
     if (origin_fd < 0)
     {
         data->status = INTERNAL_SERVER_ERROR;
@@ -644,6 +698,8 @@ static enum httpd_state get_next_state(char * method){
 }
 
 static unsigned connecting_done(struct selector_key *key){
+
+    unsigned ret = ERROR;
     printf("Connecting done\n");
     int socket_error;
     struct httpd *data = ATTACHMENT(key);
@@ -667,17 +723,35 @@ static unsigned connecting_done(struct selector_key *key){
                 goto finally;
             }
        
-            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->origin_fd, OP_NOOP))
-            {
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->origin_fd, OP_NOOP)){
                 data->status = INTERNAL_SERVER_ERROR;
                 goto finally;
             }
+
+            ret = get_next_state((char * )ATTACHMENT(key)->client.request_line.request_line_data.method);
+            goto finally;
         }else{
+
+
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->client_fd, OP_NOOP)){
+
+
+                data->status = INTERNAL_SERVER_ERROR;
+                goto finally;
+
+            }
+
+
             printf("2.socket_error == %d\n",socket_error);
             // hubo error en la conexión
             // TODO a futuro supongo que habrá un estado para reintentar conexión o devolver mensaje al usuario
             data->status = errno_response(errno);
+
+            strcpy(data->log_data.status_code, error_responses[data->status].status);
+            register_access(&data->log_data);
+            ret = REQUEST_RESOLVE;
             goto finally;
+
         }
     }else{
         
@@ -688,7 +762,7 @@ static unsigned connecting_done(struct selector_key *key){
 
    
 finally:
-    return data->status != OK ? ERROR : get_next_state((char * )ATTACHMENT(key)->client.request_line.request_line_data.method);
+    return ret;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1186,7 +1260,7 @@ static void error_init(const unsigned state,struct selector_key * key){
     struct response_line_st * rl = &data->client.response_line;
 
 
-    status_code status = data->status;
+    error_status_code status = data->status;
     const struct error_response response = error_responses[status];
     memcpy(data->log_data.status_code,response.status,strlen(response.status));
     rl->data.data_to_send_len = strlen(response.status_message) + 15;
@@ -1395,10 +1469,10 @@ static unsigned copy_write(struct selector_key *key){
     return ret;
 }
 
-static status_code errno_response(int e){
+static error_status_code errno_response(int e){
 
     // Si no sabemos manejar el error, entonces el error es de nuestra parte
-    status_code ret = INTERNAL_SERVER_ERROR;
+    error_status_code ret = INTERNAL_SERVER_ERROR;
     switch (e){
         case ECONNREFUSED:
         case EHOSTUNREACH:

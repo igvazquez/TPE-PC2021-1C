@@ -238,9 +238,9 @@ void response_line_parser_init(struct response_line_parser *parser)
     }
 }
 
-static status_code process_event(const struct parser_event * e, response_line_parser *parser){
+static error_status_code process_event(const struct parser_event * e, response_line_parser *parser){
     struct response_line * rl = parser->response_line;
-    status_code status = OK;
+    error_status_code status = OK;
     switch (e->type)
     {
         case RS_HTTP_VERSION_MAJOR:
@@ -284,7 +284,7 @@ finally:
     return status;
 }
 
-bool response_line_parser_consume(buffer *buffer, response_line_parser *parser, status_code *status){
+bool response_line_parser_consume(buffer *buffer, response_line_parser *parser, error_status_code *status){
 
     assert(parser != NULL && buffer != NULL);
     const struct parser_event *e;
@@ -314,7 +314,7 @@ void response_line_parser_reset(struct response_line_parser *parser){
     parser_reset(parser->rl_parser);
 }
 
-bool response_line_is_done(enum response_line_event_type type, status_code * status){
+bool response_line_is_done(enum response_line_event_type type, error_status_code * status){
 
     switch(type){
         case RS_UNEXPECTED:
