@@ -800,7 +800,7 @@ static void request_line_write_init(const unsigned state,struct selector_key *ke
  
 
 
-    if(-1 == sprintf((char*)rl->data.data_to_send,"%s %s HTTP/%d.%d\r\n",(char*)rl->request_line_data.method,(char*)rl->request_line_data.request_target.origin_form,1,0)){
+    if(-1 == sprintf((char*)rl->data.data_to_send,"%s %s HTTP/%d.%d\r\n",(char*)rl->request_line_data.method,(char*)rl->request_line_data.request_target.origin_form,VERSION_MAJOR,VERSION_MINOR})){
         abort();
     }
     rl->data.data_to_send[rl->data.data_to_send_len] = '\0';
@@ -919,8 +919,8 @@ static void request_message_init(const unsigned state,struct selector_key *key){
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
     rm->rb = &data->from_origin_buffer;
-    request_message_parser_init(&rm->parser,4,true); // <= cantidad de headers a tener en cuenta, podria mejorarse la interfaz para que no sea necesario pasarselo
-    int len = data->origin_addr.ss_family == AF_INET ? INET_ADDRSTRLEN + 6 : INET6_ADDRSTRLEN +6;
+    request_message_parser_init(&rm->parser,5,true); // <= cantidad de headers a tener en cuenta, podria mejorarse la interfaz para que no sea necesario pasarselo
+    int len = data->origin_addr.ss_family == AF_INET ? INET_ADDRSTRLEN + 2 + MAX_PORT_SIZE : INET6_ADDRSTRLEN + 2 + MAX_PORT_SIZE;
     char *host_buffer = (char *)malloc(len);
     
     // El parser de header es case insensitive
@@ -928,6 +928,8 @@ static void request_message_init(const unsigned state,struct selector_key *key){
     add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
     add_header(&rm->parser, "Connection", HEADER_IGNORE,NULL, NULL);
     add_header(&rm->parser, "Proxy-Authorization",  (HEADER_STORAGE | HEADER_SEND),NULL, decode_credentials);
+    add_header(&rm->parser, "Authorization",  (HEADER_STORAGE | HEADER_SEND),NULL, decode_credentials);
+
     if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
     {
             abort();

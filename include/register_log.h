@@ -1,3 +1,4 @@
+
 #ifndef REGISTER_LOG_H
 #define REGISTER_LOG_H
 #include <sys/types.h>
@@ -10,6 +11,8 @@
 #include "../include/error_responses.h"
 
 #define MAX_DATE_LENGTH 20// Ej: 202-06-15T19:30:52Z\0
+
+#define MAX_PORT_SIZE 5 // El puerto maximo es  65,535
 
 
 enum protocol {

@@ -8,7 +8,7 @@
 #include "../include/netutils.h"
 #include "../include/buffer.h"
 
-#define MAX_PORT_SIZE 5 // El puerto maximo es  65,535
+
 
 void set_address_string(struct sockaddr_storage address,char *buff,int addr_length){
 
