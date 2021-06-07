@@ -40,5 +40,5 @@ struct log_data {
 void get_current_date_string(char *date);
 void register_access(struct log_data * data);
 void register_password(struct log_data *data);
-
+char *get_origin_string(union host_addr origin_addr, enum addr_type type, in_port_t origin_port);
 #endif 

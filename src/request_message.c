@@ -306,10 +306,10 @@ static bool save_data(const struct parser_event*e,struct request_message_parser 
             for (unsigned i = 0; i < e->n;i++){        
                 parser->data[(parser->data_index)++] = e->data[i];      
             }
-            if(parser->content_lenght == 0){
+         /*   if(parser->content_lenght == 0){
                 parser->data[(parser->data_index)++] = '\r';
                 parser->data[(parser->data_index)++] = '\n';
-            }
+            }*/
             break;
         default:
             break;
@@ -344,7 +344,7 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
             parser->current_name_index = 0;
             break;
         case RM_FIELD_VALUE:
-            printf("VALUE: %c\n",(char)e->data[0]);
+           // printf("VALUE: %c\n",(char)e->data[0]);
             if(current_detection != NULL && (current_detection->interest & HEADER_STORAGE)){
                 for (unsigned i = 0; i < e->n; i++){
                     if(current_detection->value_index > MAX_HEADER_VALUE_LENGTH){
@@ -359,7 +359,7 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
             }
             break;
         case RM_FIELD_VALUE_END:
-            printf("VALUE END\n");
+            //printf("VALUE END\n");
             // si detecté algun header, ya terminó
             if(current_detection != NULL){
                 if(current_detection->interest & HEADER_STORAGE){
@@ -369,7 +369,7 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
                 
                 if (current_detection->on_value_end != NULL)
                 {
-                    printf("ON VALUE END: %s\n", current_detection->value_storage);
+                    //printf("ON VALUE END: %s\n", current_detection->value_storage);
                     current_detection->on_value_end(parser,log_data);
                 }
             }
@@ -385,7 +385,7 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
             }
             break;
         case RM_BODY_START:
-            printf("BODY START: %c\n",e->data[0]);
+            //printf("BODY START: %c\n",e->data[0]);
             if(parser->save_data){
                 save_data(e, parser);
             }

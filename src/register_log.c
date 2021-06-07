@@ -35,14 +35,15 @@ void set_address_string(struct sockaddr_storage address,char *buff,int addr_leng
 
 }
 
-char* get_origin_string(union host_addr origin_addr,enum addr_type type,char* origin_form,in_port_t origin_port){
+
+
+char* get_origin_string(union host_addr origin_addr,enum addr_type type,in_port_t origin_port){
     char *address = NULL;
-    size_t origin_len = origin_form == NULL ? 0: strlen(origin_form);
     size_t address_len;
     switch (type){  
     case ipv4_addr_t:
     
-        address_len = INET_ADDRSTRLEN + origin_len + MAX_PORT_SIZE + 2;
+        address_len = INET_ADDRSTRLEN + MAX_PORT_SIZE + 2;
         address = (char *)calloc(1,address_len);
         if(address == NULL){
             return NULL;
@@ -52,16 +53,27 @@ char* get_origin_string(union host_addr origin_addr,enum addr_type type,char* or
         break;
     case ipv6_addr_t:
   
-        address_len = INET6_ADDRSTRLEN + origin_len + MAX_PORT_SIZE + 2;
+        address_len = INET6_ADDRSTRLEN  + MAX_PORT_SIZE + 4;
         address = (char *)calloc(1,address_len);
         if(address == NULL){
             return NULL;
         }
-        sockaddr_to_human(address,address_len,(const struct sockaddr*)&origin_addr.ipv6);
+        char ipv6[INET6_ADDRSTRLEN];
+        const struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&origin_addr.ipv6;
+        if (inet_ntop(addr6->sin6_family, &(addr6->sin6_addr),  ipv6, INET6_ADDRSTRLEN) == 0) {
+            strncpy(address, "unknown ip", INET6_ADDRSTRLEN);
+            address[INET6_ADDRSTRLEN - 1] = 0;
+        }
+        printf("ipv6 origin addres: %s\n", address);
+
+        if(-1 == sprintf(address,"[%s]:%d",ipv6,ntohs(origin_port))){
+            abort();
+        }
+        printf("despues del sprintf: %s\n", address);
         break;
     case domain_addr_t:
   
-        address_len = MAX_FQDN_LENGTH + origin_len + MAX_PORT_SIZE + 2;
+        address_len = MAX_FQDN_LENGTH  + MAX_PORT_SIZE + 2;
         address = (char *)calloc(1,address_len);
         if(address == NULL){
             return NULL;
@@ -71,11 +83,8 @@ char* get_origin_string(union host_addr origin_addr,enum addr_type type,char* or
         }
         break;
     }
-    if(origin_form != NULL){
-        size_t host_len = strlen(address);
-        memcpy(address + host_len, origin_form, origin_len); 
-    }
-    printf("origin address: %s\n",address);
+
+
     return address;
 }
 
@@ -114,11 +123,12 @@ static void log_register(struct log_data *log_data, char reg_type) {
 
             char client_address_str[client_addr_length];
             set_address_string(*log_data->client_addr, client_address_str ,client_addr_length);
-            char* format = "%s\tA\t%s\t%d\t%s\t%s\t%s\n";
-            n = snprintf(buffer,100,format, log_data->date,client_address_str, ntohs(get_address_port(*log_data->client_addr)), log_data->method, get_origin_string(log_data->origin_addr,log_data->origin_addr_type,log_data->origin_form,log_data->origin_port), log_data->status_code);
+            char* format = "%s\tA\t%s\t%d\t%s\thttp://%s%s\t%s\n";
+            char *origin_form = log_data->origin_form;
+            n = snprintf(buffer,100,format, log_data->date,client_address_str, ntohs(get_address_port(*log_data->client_addr)), log_data->method, get_origin_string(log_data->origin_addr,log_data->origin_addr_type,log_data->origin_port),origin_form, log_data->status_code);
             
     }else if(reg_type == 'P'){
-        char *origin_addr = get_origin_string(log_data->origin_addr, log_data->origin_addr_type, NULL, log_data->origin_port);
+        char *origin_addr = get_origin_string(log_data->origin_addr, log_data->origin_addr_type, log_data->origin_port);
         char *host;
         char *port;
 

@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <ctype.h>
 
 enum state
 {
@@ -187,20 +188,25 @@ static const struct parser_state_transition ST_METHOD[] =  {
 
 static const struct parser_state_transition ST_SCHEME0[] =  {
     {.when = 'h',        .dest = SCHEME1,         .act1 = scheme,},
+    {.when = 'H',        .dest = SCHEME1,         .act1 = scheme,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 static const struct parser_state_transition ST_SCHEME1[] =  {
+    
     {.when = 't',        .dest = SCHEME2,         .act1 = scheme,},
+    {.when = 'T',        .dest = SCHEME2,         .act1 = scheme,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
 static const struct parser_state_transition ST_SCHEME2[] =  {
     {.when = 't',        .dest = SCHEME3,         .act1 = scheme,},
+    {.when = 'T',        .dest = SCHEME3,         .act1 = scheme,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
 static const struct parser_state_transition ST_SCHEME3[] =  {
     {.when = 'p',        .dest = SCHEME4,         .act1 = scheme,},
+    {.when = 'P',        .dest = SCHEME4,         .act1 = scheme,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
@@ -516,22 +522,26 @@ static error_status_code process_event(const struct parser_event * e,request_lin
     switch (e->type)
     {
     case RL_METHOD:
+        printf("METHOD: %c\n", e->data[0]);
         if(parsed_info->method_counter > MAX_METHOD_LENGTH)
             return BAD_REQUEST;
-        parsed_info->method_buffer[(parsed_info->method_counter)++] = e->data[0];
+        parsed_info->method_buffer[(parsed_info->method_counter)++] = toupper(e->data[0]);
         break;
     case RL_METHOD_END:
+       printf("METHOD END: %c\n", e->data[0]);
         parsed_info->method_buffer[parsed_info->method_counter] = '\0';
         if(stricmp(parsed_info->method_buffer,"CONNECT") == 0){
             set_authority_form(parser->rl_parser);
         }
         break;
     case RL_HOST:
+       printf("HOST: %c\n", e->data[0]);
             if(parsed_info->host_counter > MAX_FQDN_LENGTH)
                 return URI_TOO_LONG;
             parsed_info->host.domain_or_ipv4_buffer[(parsed_info->host_counter)++] = e->data[0];
         break;
     case RL_HOST_END:
+       printf("HOST END: %c\n", e->data[0]);
         if(parsed_info->host_type == domain_or_ipv4_addr){
             if(parsed_info->host_counter > MAX_FQDN_LENGTH)
                 return URI_TOO_LONG;
@@ -544,6 +554,7 @@ static error_status_code process_event(const struct parser_event * e,request_lin
         }
         break;
     case RL_PORT:
+       printf("PORT: %c\n", e->data[0]);
         parsed_info->port *= 10;
         parsed_info->port += (e->data[0] - '0');
         break;
@@ -557,23 +568,28 @@ static error_status_code process_event(const struct parser_event * e,request_lin
         parsed_info->host.ipv6_buffer[(parsed_info->host_counter)++] = e->data[0];
         break;
     case RL_ORIGIN_FORM:
+       printf("ORIGIN: %c\n", e->data[0]);
         if(parsed_info->origin_form_counter > MAX_ORIGIN_FORM)
             return URI_TOO_LONG;
         parsed_info->origin_form_buffer[(parsed_info->origin_form_counter)++] = e->data[0];
         break;
     case RL_ORIGIN_FORM_END:
+       printf("ORIGIN END: %c\n", e->data[0]);
         if(parsed_info->origin_form_counter > MAX_ORIGIN_FORM)
             return URI_TOO_LONG;
 
         parsed_info->origin_form_buffer[parsed_info->origin_form_counter] =  '\0';
         break;
     case RL_HTTP_VERSION_MAJOR:
+       printf("MAJOR: %c\n", e->data[0]);
         parsed_info->version_major = e->data[0] - '0';
         break;
     case RL_HTTP_VERSION_MINOR:
+       printf("MINOR: %c\n", e->data[0]);
         parsed_info->version_minor = e->data[0] - '0';  
         break;
     case RL_DONE:
+       printf("DONE: %c\n", e->data[0]);
         if(parsed_info->origin_form_counter == 0 && stricmp(parsed_info->method_buffer,"CONNECT") != 0){
          
             parsed_info->origin_form_buffer[parsed_info->origin_form_counter++] =  '/';
@@ -677,7 +693,7 @@ bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, er
     while (buffer_can_read(buffer))
     {
         c = buffer_read(buffer);
-      
+        printf("parsing: %c\n", c);
         e = parser_feed(parser->rl_parser, c);
      
         do{

@@ -382,6 +382,8 @@ static struct httpd *httpd_new(int client_fd){
 
     http_disector_init(&ret->http_disector,&ret->log_data);
     pop3_disector_init(&ret->pop3_disector,&ret->log_data);
+    //Como default es 200 por si el cliente cierra la conexión antes de terminar de enviar la request
+    strcpy(ret->log_data.status_code, "200");
     return ret;
 }
 
@@ -918,11 +920,11 @@ static void request_message_init(const unsigned state,struct selector_key *key){
     struct request_message_st *rm = &data->client.request_message;
     rm->rb = &data->from_origin_buffer;
     request_message_parser_init(&rm->parser,4,true); // <= cantidad de headers a tener en cuenta, podria mejorarse la interfaz para que no sea necesario pasarselo
-    int len = data->origin_addr.ss_family == AF_INET ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
+    int len = data->origin_addr.ss_family == AF_INET ? INET_ADDRSTRLEN + 6 : INET6_ADDRSTRLEN +6;
     char *host_buffer = (char *)malloc(len);
     
     // El parser de header es case insensitive
-    add_header(&rm->parser, "Host", HEADER_REPLACE,sockaddr_to_human(host_buffer,len,((const struct sockaddr*)&data->origin_addr)), NULL);
+    add_header(&rm->parser, "Host", HEADER_REPLACE,get_origin_string(data->log_data.origin_addr,data->log_data.origin_addr_type,data->log_data.origin_port), NULL);
     add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
     add_header(&rm->parser, "Connection", HEADER_IGNORE,NULL, NULL);
     add_header(&rm->parser, "Proxy-Authorization",  (HEADER_STORAGE | HEADER_SEND),NULL, decode_credentials);
