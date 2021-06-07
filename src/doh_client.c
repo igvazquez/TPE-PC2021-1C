@@ -13,7 +13,7 @@
 #include <string.h>
 
 #define N(x) (sizeof(x)/sizeof((x)[0]))
-
+#define DOH_ATTACHMENT(key) ( (struct doh*)(key)->data)
 
 void doh_kill(struct selector_key *key);
 void doh_read(struct selector_key *key);
@@ -21,10 +21,9 @@ void doh_write(struct selector_key *key);
 void doh_block(struct selector_key *key);
 void doh_close(struct selector_key * key);
 fd_handler handler = {
-    .handle_block = doh_read,
     .handle_close = doh_close,
     .handle_write = doh_write,
-    .handle_read =  doh_block,
+    .handle_read =  doh_read,
 };
 
 int init(doh * doh, char * fqdn){
@@ -34,10 +33,10 @@ int init(doh * doh, char * fqdn){
 
     struct sockaddr_storage * s = malloc(sizeof( struct sockaddr_storage));
 
-    int ret = 0;
+    int ret = -1;
     if (s != NULL) {
         doh->resolve_info->storage = s;
-        ret = -1;
+        ret = 0;
     }
 
 
@@ -53,15 +52,15 @@ void doh_close(struct selector_key * key){
 
 int resolve (char *fqdn, fd_selector selector, int request_socket, address_resolve_info * resolve_info){
 
-    doh * doh = malloc(sizeof(doh));
+    doh * doh = malloc(sizeof(struct doh));
     if (doh == NULL)
         return -1;
-    
-    if(init(doh,fqdn)==-1)
-        goto finally;
 
     doh->resolve_info = resolve_info;
 
+    if(init(doh,fqdn)==-1) {
+        goto finally;
+    }
 
     int fd = socket(AF_INET,SOCK_STREAM,0);
     if(fd ==-1)
@@ -135,7 +134,7 @@ void get_response(doh * doh , doh_response * doh_response){
 
 
     memset(doh->resolve_info->storage, 0, sizeof(struct sockaddr_storage));
-    memset(&doh->resolve_info->qty, 0, sizeof(int));
+    doh->resolve_info->qty = 0;
 
     doh_response->dns_response_parsed = *parse_answer(doh_response->dns_response,doh_response->content_length,doh->resolve_info->storage, &doh->resolve_info->qty);
 
@@ -246,9 +245,6 @@ char * create_doh_get_req (doh * doh, size_t * req_len){
     *req_len = http_req_len +1 ;
 
     return http_req;
-
-
-
 }
 
 int doh_request(doh * doh){
@@ -275,7 +271,7 @@ int doh_request(doh * doh){
 
 void doh_write (struct selector_key * key){
 
-    doh * current_doh = (doh *) key->data;
+    doh * current_doh = DOH_ATTACHMENT(key);
 
     int socket_error;
     socklen_t socket_error_len = sizeof(socket_error);
@@ -295,18 +291,17 @@ void doh_write (struct selector_key * key){
 
             //queremos leer la rta del doh server ahora
             buffer_read_adv(&current_doh->buffer,bytes_sent);
-            if(!buffer_can_read(&current_doh->buffer) && selector_set_interest_key(key,OP_READ) != SELECTOR_SUCCESS)
-                goto finally;
+
+            if(!buffer_can_read(&current_doh->buffer))
+                if(selector_set_interest_key(key,OP_READ) != SELECTOR_SUCCESS)
+                    goto finally;
+
+            return;
         }
     }
 
-
     finally:
-        if(selector_set_interest(key->s, current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS)
-            abort(); //TODO CAMBIAME
         doh_kill(key);
-
-
 
 }
 

@@ -74,7 +74,7 @@ void parse_header(dns_response * parsed_response, unsigned char * response) {
 
 
 dns_response * parse_answer(unsigned char * response, size_t bytes, struct sockaddr_storage  * storage, int * qty) {
-    dns_response *parsed_response = malloc(sizeof(dns_response));
+    dns_response *parsed_response = malloc(sizeof(struct dns_response));
 
 
 

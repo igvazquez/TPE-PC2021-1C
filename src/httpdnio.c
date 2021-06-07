@@ -551,8 +551,8 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
         if(resolve(rl->request_line_data.request_target.host.domain,key->s,data->client_fd, &rl->resolve_info) != -1){
             ret = REQUEST_RESOLVE;
 
-            memcpy(data->log_data.origin_addr.domain, rl->request_line_data.request_target.host.domain ,strlen((char*)rl->request_line_data.request_target.host.domain)+1);
-            data->log_data.origin_addr_type = domain_addr_t;
+//            memcpy(data->log_data.origin_addr.domain, rl->request_line_data.request_target.host.domain ,strlen((char*)rl->request_line_data.request_target.host.domain)+1);
+//            data->log_data.origin_addr_type = domain_addr_t;
 
 
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, key->fd, OP_NOOP)){
