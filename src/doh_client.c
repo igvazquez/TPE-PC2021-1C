@@ -16,62 +16,49 @@
 #define N(x) (sizeof(x)/sizeof((x)[0]))
 #define DOH_ATTACHMENT(key) ( (struct doh*)(key)->data)
 
+static void close_client(struct selector_key *key);
+
 void doh_kill(struct selector_key *key);
 void doh_read(struct selector_key *key);
 void doh_write(struct selector_key *key);
-void doh_block(struct selector_key *key);
 void doh_close(struct selector_key * key);
 fd_handler handler = {
-    .handle_close = doh_close,
     .handle_write = doh_write,
     .handle_read =  doh_read,
 };
 
-int init(doh * doh, char * fqdn){
+void doh_init(doh * doh, char * fqdn){
     buffer_init(&doh->buffer,N(doh->data),doh->data);
     doh->FQDN = fqdn;
     doh->server_info = get_doh_info();
     printf("resolve init\n");
- 
-
-//    struct sockaddr_storage * s = malloc(sizeof( struct sockaddr_storage));
-
-    int ret = 1;
-   // if (s != NULL) {
-   //     doh->resolve_info->storage = s;
-   //     ret = 0;
-   // }
-
 }
-
-
 void doh_close(struct selector_key * key){
-    free(key->data);
+    printf("doh close\n");
+    doh_kill(key);
 }
 
-int resolve (char *fqdn, fd_selector selector, int request_socket, address_resolve_info * resolve_info){
+
+
+resolve_status resolve (char *fqdn, fd_selector selector, int request_socket, address_resolve_info * resolve_info){
 
     doh * doh = malloc(sizeof(struct doh));
-    if (doh == NULL)
-        return -1;
-
+    if (doh == NULL){
+        goto finally;
+    }
     doh->resolve_info = resolve_info;
+    doh_init(doh,fqdn);  
+    int fd = socket(AF_INET,SOCK_STREAM,0);
+    if(fd ==-1){
+        goto finally;
+    }   
+    //no bloqueante
+    if(selector_fd_set_nio(fd) == -1){
 
-    if(init(doh,fqdn)==-1) {
         goto finally;
     }
 
-    int fd = socket(AF_INET,SOCK_STREAM,0);
-    if(fd ==-1)
-        return -1;
-    
 
-    //no bloqueante
-    int aux = selector_fd_set_nio(fd);
-    if(aux==-1)
-        return -1;
-    
-    
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
@@ -83,31 +70,26 @@ int resolve (char *fqdn, fd_selector selector, int request_socket, address_resol
 
     doh->socket = fd;
     doh->client_socket = request_socket;
-    aux = connect(fd,(const struct sockaddr * ) &addr,sizeof(addr));
 
-    if(aux ==-1){
+    if( connect(fd,(const struct sockaddr * ) &addr,sizeof(addr)) ==-1){
         //Como es bloqueante falla, veo  q tiene errno
         if (errno == EINPROGRESS){
             //nos registramos en el selector para escribir la request
-            selector_status status = selector_register(selector,fd,&handler,OP_WRITE,doh);
-            if(status != SELECTOR_SUCCESS)
+            if( selector_register(selector,fd,&handler,OP_WRITE,doh) != SELECTOR_SUCCESS)
                 goto finally;
-            
-        
-        }
-        else
+            return RESOLVE_OK;
+        }else{
             goto finally;
+        }
+  
     }
-
-
-    return 1;
-
-    finally:
-        free(doh);
-        return -1;
-    
-    
-
+finally:
+    doh->resolve_info->status = RESOLVE_ERROR;
+    if(fd != -1){
+        close(fd);
+    }
+    free(doh);
+    return RESOLVE_ERROR;
 }
 
 
@@ -160,37 +142,51 @@ void doh_read(struct selector_key * key){
         if (response.current_state == finished){
             printf("get response termino\n");
             printf("storage dir: %p\n", current_doh->resolve_info->storage);
-            if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS)
-                goto finally;
 
+            printf("setee OP WRITE al cliente");
+            current_doh->resolve_info->status = RESOLVE_OK;
+            printf("STATUS RESOLVE OK");
             doh_kill(key);
-        }else if(response.current_state == error)
-            goto finally;
+            if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
+                close_client(key);
+            }
+            return;
+        }else if(response.current_state == error){
+               goto finally;
+        }
+         
+    }else{
 
-        return;
+        goto finally;
     }
-
-    return;
     finally:
-    selector_set_interest(key->s,current_doh->client_socket,OP_WRITE);
+        current_doh->resolve_info->status = RESOLVE_ERROR;
+        if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
+            close_client(key);
+        }
+        doh_kill(key);
    // free(current_doh->resolve_info->storage);
-    doh_kill(key);
+   // doh_kill(key);
 
 
 }
 
-
-
-void doh_block(struct selector_key * key){
-
-}
 void doh_kill(struct selector_key * key){
     doh * current_doh = (doh*) key->data;
-
+    printf("doh kill1 \n");
     //nos salimos del selector y liberamos recursos
-    if(selector_unregister_fd(key->s,current_doh->socket))
+    if(selector_unregister_fd(key->s,current_doh->socket) == -1){
+       
+        printf("doh kill 2\n");
         abort();
-    close(current_doh->socket);
+    }
+     
+    if(close(current_doh->socket) == -1){
+        printf("doh kill 3\n");
+        abort();
+    }
+    printf("doh kill 4\n");
+    free(current_doh);
     //frees?
 
 }
@@ -290,7 +286,7 @@ void doh_write (struct selector_key * key){
 
             uint8_t * request = buffer_read_ptr(&current_doh->buffer,&nbytes);
             ssize_t bytes_sent = send(key->fd,request,nbytes, MSG_NOSIGNAL);
-            if (bytes_sent == -1)
+            if (bytes_sent <=0)
                 goto finally;
 
             //queremos leer la rta del doh server ahora
@@ -302,15 +298,33 @@ void doh_write (struct selector_key * key){
                 if (selector_set_interest_key(key, OP_READ) != SELECTOR_SUCCESS)
                     goto finally;
 
+            }else{
+                //no pude enviar toda la request, por ahora cancelamos la conexión
+                goto finally;
             }
 
-              
             return;
         }
     }
 
     finally:
+        current_doh->resolve_info->status = RESOLVE_ERROR;
         doh_kill(key);
+        if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
+            //si falla entonces cierro desde aca la conexión con el cliente
+            close_client(key);
+        }
+            
+      
 
 }
 
+static void close_client(struct selector_key *key){
+
+    if(SELECTOR_SUCCESS != selector_unregister_fd(key->s, DOH_ATTACHMENT(key)->client_socket)) {
+        abort();
+    }
+    if(close(DOH_ATTACHMENT(key)->client_socket)){
+        abort();
+    }
+}

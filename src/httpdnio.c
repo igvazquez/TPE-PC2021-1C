@@ -547,13 +547,13 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
     case domain_addr_t:
 
         printf("es domain_addr_t\n");
-        if (resolve(rl->request_line_data.request_target.host.domain, key->s, data->client_fd, &rl->resolve_info) != -1)
+
+        if (resolve(rl->request_line_data.request_target.host.domain, key->s, data->client_fd, &rl->resolve_info) != RESOLVE_ERROR)
         {
             ret = REQUEST_RESOLVE;
 
             memcpy(data->log_data.origin_addr.domain, rl->request_line_data.request_target.host.domain ,strlen((char*)rl->request_line_data.request_target.host.domain)+1);
             data->log_data.origin_addr_type = domain_addr_t;
-
 
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, key->fd, OP_NOOP)){
                 data->status = INTERNAL_SERVER_ERROR;
@@ -562,7 +562,7 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
         }
         else
         {
-            data->status = errno_response(errno);
+            data->status = INTERNAL_SERVER_ERROR;
             ret = ERROR;
             goto finally;
         }
@@ -586,14 +586,19 @@ static unsigned request_resolve_done(struct selector_key * key){
     struct httpd *data = ATTACHMENT(key);
 
     struct request_line_st * rl = &data->client.request_line;
+
+    if(rl->resolve_info.status != RESOLVE_OK){
+        data->status = BAD_GATEWAY;
+        return ERROR;
+    }
     if(rl->resolve_info.qty == 0){
         printf("tengo 0 ips \n");
         if(rl->resolve_info.type == IPV4){
+            printf("CAMBIO A IPV6");
             rl->resolve_info.type = IPV6;
             return request_line_process(rl,key);
         }else{
-            //TODO agregar status
-            data->status = INTERNAL_SERVER_ERROR;
+            data->status = BAD_GATEWAY;
             return ERROR;
         }
     }else{

@@ -392,6 +392,7 @@ selector_status
 selector_unregister_fd(fd_selector       s,
                        const int         fd) {
     selector_status ret = SELECTOR_SUCCESS;
+    printf("UNREGISTER FD \n");
 
     if(NULL == s || INVALID_FD(fd)) {
         ret = SELECTOR_IARGS;

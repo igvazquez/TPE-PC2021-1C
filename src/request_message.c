@@ -344,6 +344,7 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
             parser->current_name_index = 0;
             break;
         case RM_FIELD_VALUE:
+            printf("VALUE: %c\n",(char)e->data[0]);
             if(current_detection != NULL && (current_detection->interest & HEADER_STORAGE)){
                 for (unsigned i = 0; i < e->n; i++){
                     if(current_detection->value_index > MAX_HEADER_VALUE_LENGTH){
@@ -358,6 +359,7 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
             }
             break;
         case RM_FIELD_VALUE_END:
+            printf("VALUE END\n");
             // si detecté algun header, ya terminó
             if(current_detection != NULL){
                 if(current_detection->interest & HEADER_STORAGE){
@@ -383,7 +385,7 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
             }
             break;
         case RM_BODY_START:
- 
+            printf("BODY START: %c\n",e->data[0]);
             if(parser->save_data){
                 save_data(e, parser);
             }

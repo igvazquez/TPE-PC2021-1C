@@ -87,9 +87,7 @@ dns_response * parse_answer(unsigned char * response, size_t bytes, address_reso
         resolve_info->qty = 0;
 
        // memset(resolve_info->storage, 0, sizeof(struct sockaddr_storage) * parsed_response->header.ans);
-
-
-
+        printf("lei %d ips\n", parsed_response->header.ans_count);
 
         int idx = 12;
         while (response[idx] != 0x00) idx++;

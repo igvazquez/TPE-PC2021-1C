@@ -4,19 +4,11 @@
 #include "../include/buffer.h"
 #include "../include/selector.h"
 #include "../include/args.h"
-
-
 #include "../include/dns.h"
 
 #include "../include/doh_response.h"
 
 #define MAX_BUFFER_SIZE 1024 //TODO Alcanza?
-
-
-
-
-
-
 
 
 enum parse_response_state {
@@ -59,7 +51,7 @@ typedef struct doh {
 }doh;
 
 
-int resolve (char *fqdn, fd_selector selector ,int request_socket,  address_resolve_info * address_resolve_info);
+resolve_status resolve (char *fqdn, fd_selector selector ,int request_socket,  address_resolve_info * address_resolve_info);
 
 
 

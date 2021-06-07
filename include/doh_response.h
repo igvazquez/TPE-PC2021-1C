@@ -9,11 +9,16 @@ enum ip_type{
     IPV6
 };
 
+typedef enum resolve_status
+{   
+    RESOLVE_ERROR,
+    RESOLVE_OK
+} resolve_status;
 
 typedef struct address_resolve_info{
     int qty; //cant d ips en el storage
     struct sockaddr_storage * storage;
     enum ip_type type;
-
-}address_resolve_info;
+    resolve_status status;
+} address_resolve_info;
 #endif
