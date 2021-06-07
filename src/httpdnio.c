@@ -551,8 +551,8 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
         {
             ret = REQUEST_RESOLVE;
 
-//            memcpy(data->log_data.origin_addr.domain, rl->request_line_data.request_target.host.domain ,strlen((char*)rl->request_line_data.request_target.host.domain)+1);
-//            data->log_data.origin_addr_type = domain_addr_t;
+            memcpy(data->log_data.origin_addr.domain, rl->request_line_data.request_target.host.domain ,strlen((char*)rl->request_line_data.request_target.host.domain)+1);
+            data->log_data.origin_addr_type = domain_addr_t;
 
 
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, key->fd, OP_NOOP)){
@@ -939,39 +939,42 @@ static void request_message_init(const unsigned state,struct selector_key *key){
     }
 }
 
-static bool read_message(int read_fd,int write_fd,buffer* rb,fd_selector s){
-    bool error = false;
+static bool read_message(int read_fd,int write_fd,buffer* rb,fd_selector s,bool * error){
+    bool done = false;
     size_t wbytes;
     uint8_t *read_buffer_ptr = buffer_write_ptr(rb, &wbytes);
     printf("wbytes = %ld\n", wbytes);
     ssize_t numBytesRead = recv(read_fd, read_buffer_ptr, wbytes,0);
     printf("numBytesRead = %ld\n", numBytesRead);
-
-
     if (numBytesRead > 0)
     {
         buffer_write_adv(rb, numBytesRead);
         if(!buffer_can_write(rb)){
             if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
             {
-                error = true;
+                *error = true;
                 goto finally;
             }
         }
         if (SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_WRITE))
         {
-            error = true;
+            *error = true;
             goto finally;
         }
-    }      
-    else
-    {
-        error = true;
+    }else if(numBytesRead <0){
+        *error = true;
         goto finally;
+    }else{
+        if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
+        {
+                *error = true;
+                goto finally;
+        }
+        done = true;
     }
  
 finally:
-    return error;
+    return done;
 }
 
 static unsigned request_message_read(struct selector_key* key){
@@ -979,13 +982,18 @@ static unsigned request_message_read(struct selector_key* key){
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
     buffer * client_rb = rm->rb;
-    bool error = read_message(data->client_fd, data->origin_fd, client_rb, key->s);
+    bool error = false;
+    unsigned ret = REQUEST_MESSAGE;
+    bool done = read_message(data->client_fd, data->origin_fd, client_rb, key->s,&error);
     if (error)
     {
         data->status = INTERNAL_SERVER_ERROR;
+        ret = ERROR;
+    }else if(done){
+        ret = DONE;
     }
     
-    return data->status != OK ? ERROR : REQUEST_MESSAGE;
+    return ret;
 }
 
 static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_parser *parser, fd_selector s, bool *error,struct log_data*log_data)
@@ -1243,13 +1251,18 @@ static unsigned response_message_read(struct selector_key* key){
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.request_message;
     buffer * origin_rb = rm->rb;
-    bool error =  read_message(data->origin_fd, data->client_fd, origin_rb, key->s);
+    bool error = false;
+    unsigned ret = REQUEST_MESSAGE;
+    bool done = read_message(data->origin_fd, data->client_fd, origin_rb, key->s,&error);
     if (error)
     {
         data->status = INTERNAL_SERVER_ERROR;
+        ret = ERROR;
+    }else if(done){
+        ret = DONE;
     }
     
-    return error ? ERROR : RESPONSE_MESSAGE;
+    return ret;
 }
 
 
