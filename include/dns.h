@@ -53,7 +53,7 @@ void generate_query(char * fqdn,unsigned  char * result, int * dns_query_size, e
 
 
 
-dns_response * parse_answer(unsigned char * response, size_t bytes, struct sockaddr_storage * storage, int * qty);
+dns_response * parse_answer(unsigned char * response, size_t bytes, struct sockaddr_storage ** storage, int * qty);
 
 
 #endif

@@ -5,7 +5,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-
+#include "../include/netutils.h"
 
 /*
 <33 bytes represented by the following hex encoding>
@@ -73,16 +73,17 @@ void parse_header(dns_response * parsed_response, unsigned char * response) {
 }
 
 
-dns_response * parse_answer(unsigned char * response, size_t bytes, struct sockaddr_storage  * storage, int * qty) {
+dns_response * parse_answer(unsigned char * response, size_t bytes, struct sockaddr_storage  ** storage, int * qty) {
     dns_response *parsed_response = malloc(sizeof(struct dns_response));
 
-
+    printf("parse_answer\n");
 
     if (parsed_response != NULL) {
 
         parse_header(parsed_response,response);
-
-
+        printf("termine de parsear header\n");
+        *storage = (struct sockaddr_storage *)malloc(parsed_response->header.ans_count * sizeof(struct sockaddr_storage));
+        printf("hago storage malloc\n");
         int idx = 12;
         while (response[idx] != 0x00) idx++;
         idx += 5; //Consumimos el 0x00 de fin de qname y 4 de qtype y qclass
@@ -114,26 +115,31 @@ dns_response * parse_answer(unsigned char * response, size_t bytes, struct socka
 
             if (qtype == A_QTYPE) {
                // storage.ss_family = AF_INET;
-                struct sockaddr_in ipv4;
-                memset(&ipv4, 0, sizeof(struct sockaddr_in));
-                ipv4.sin_family = AF_INET;
-                uint32_t  aux = 0;
-                memcpy(&aux,response + idx, sizeof(uint32_t));
+               printf(" es ipv4\n");
+               struct sockaddr_in ipv4;
+               memset(&ipv4, 0, sizeof(struct sockaddr_in));
+               ipv4.sin_family = AF_INET;
+               uint32_t aux = 0;
+               memcpy(&aux, response + idx, sizeof(uint32_t));
 
-                ipv4.sin_addr.s_addr = aux;
-                memcpy(&storage[rta_num], (struct  sockaddr_storage *) &ipv4,sizeof(ipv4));
+               ipv4.sin_addr.s_addr = aux;
+               memcpy(*storage + rta_num, (struct sockaddr_storage *)&ipv4, sizeof(ipv4));
 
 
 
             } else {
+                printf(" es ipv6\n");
                 struct sockaddr_in6 ipv6;
                 memset(&ipv6,0,sizeof(struct sockaddr_in6));
                 ipv6.sin6_family = AF_INET6;
-
                 memcpy(ipv6.sin6_addr.__in6_u.__u6_addr8, response + idx, data_length);
-                memcpy(&storage[rta_num], (struct  sockaddr_storage *) &ipv6,sizeof(ipv6));
+                memcpy(*storage +rta_num, (struct  sockaddr_storage *) &ipv6,sizeof(ipv6));
 
             }
+            char buff[60];
+            sockaddr_to_human(buff,60,(const struct sockaddr*)(*storage + rta_num));
+            printf("1 dns storage[%d] = %s\n", rta_num, buff);
+
             (*qty)++;
             response += idx;
 
@@ -165,7 +171,7 @@ int create_question(char * fqdn, unsigned char * result, char qtype){
 
         }else{
             //terminamos de armar el label, poniendo la cant de octetos en el lugar reservado
-            result[j] = 3;//i-j;
+            result[j] = i-j;
             j= i+1;
 
         }

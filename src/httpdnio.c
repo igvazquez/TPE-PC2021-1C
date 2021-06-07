@@ -546,9 +546,9 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
 
     case domain_addr_t:
 
-
-
-        if(resolve(rl->request_line_data.request_target.host.domain,key->s,data->client_fd, &rl->resolve_info) != -1){
+        printf("es domain_addr_t\n");
+        if (resolve(rl->request_line_data.request_target.host.domain, key->s, data->client_fd, &rl->resolve_info) != -1)
+        {
             ret = REQUEST_RESOLVE;
 
 //            memcpy(data->log_data.origin_addr.domain, rl->request_line_data.request_target.host.domain ,strlen((char*)rl->request_line_data.request_target.host.domain)+1);
@@ -559,7 +559,9 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
                 data->status = INTERNAL_SERVER_ERROR;
                 ret = ERROR;
             }
-        }else{
+        }
+        else
+        {
             data->status = errno_response(errno);
             ret = ERROR;
             goto finally;
@@ -580,10 +582,12 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
 // REQUEST RESOLVE
 ////////////////////////////////////////////////////////////////////////////////
 static unsigned request_resolve_done(struct selector_key * key){
+    printf("request resolve done\n");
     struct httpd *data = ATTACHMENT(key);
 
     struct request_line_st * rl = &data->client.request_line;
     if(rl->resolve_info.qty == 0){
+        printf("tengo 0 ips \n");
         if(rl->resolve_info.type == IPV4){
             rl->resolve_info.type = IPV6;
             return request_line_process(rl,key);
@@ -593,19 +597,29 @@ static unsigned request_resolve_done(struct selector_key * key){
             return ERROR;
         }
     }else{
-        struct sockaddr_storage storage  = rl->resolve_info.storage[rl->resolve_info.qty--];
+        printf("tengo %d ips\n", rl->resolve_info.qty);
+        struct sockaddr_storage storage  = rl->resolve_info.storage[rl->resolve_info.qty-1];
+           printf("2 storage dir: %p\n", &storage);
+     //   storage.ss_family = AF_INET;
+  
+
         if(rl->resolve_info.type == IPV4){
+            printf("resolve done es ipv4\n");
             struct sockaddr_in  * sin = (struct sockaddr_in * ) &storage;
             sin->sin_port = rl->request_line_data.request_target.port;
 
         }else{
+            printf("resolve done es ipv6\n");
             struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) &storage;
             sin6->sin6_port = rl->request_line_data.request_target.port;
 
         }
         data->origin_addr_len = sizeof(storage);
         memcpy(&data->origin_addr,&storage,data->origin_addr_len);
-
+        rl->resolve_info.qty--;
+        char buff[50];
+        sockaddr_to_human(buff, 50, (const struct sockaddr *)&storage);
+        printf("storage done = %s\n", buff);
         return connect_to_origin(storage.ss_family,key);
     }
 
