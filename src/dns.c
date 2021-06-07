@@ -1,11 +1,12 @@
 #include "../include/dns.h"
+#include "../include/netutils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include "../include/netutils.h"
+
 
 /*
 <33 bytes represented by the following hex encoding>

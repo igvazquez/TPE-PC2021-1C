@@ -467,7 +467,6 @@ handle_iteration(fd_selector s) {
     struct selector_key key = {
         .s = s,
     };
-    fd_selector aux;
     for (int i = 0; i <= n; i++) {
 
         struct item *item = s->fds + i;
@@ -481,10 +480,7 @@ handle_iteration(fd_selector s) {
                     if(0 == item->handler->handle_read) {
                         assert(("OP_READ arrived but no handler. bug!" == 0));
                     } else {
-                        ;
-                       
                         item->handler->handle_read(&key);
-                       
                     }
                 }
             }
