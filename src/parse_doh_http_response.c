@@ -222,7 +222,7 @@ void eat_byte(doh_response * http_response, unsigned char byte) {
                     break;
                 }
             }
-            if(http_response->state_bytes_read < http_response->content_length) {
+            if(http_response->state_bytes_read < http_response->content_length -1) {
                 http_response->dns_response[http_response->state_bytes_read++] = byte;
             } else {
                 http_response->current_state = finished;

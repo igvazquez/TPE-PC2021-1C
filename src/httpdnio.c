@@ -597,12 +597,7 @@ static unsigned request_resolve_done(struct selector_key * key){
             return ERROR;
         }
     }else{
-        printf("tengo %d ips\n", rl->resolve_info.qty);
-        struct sockaddr_storage storage  = rl->resolve_info.storage[rl->resolve_info.qty-1];
-           printf("2 storage dir: %p\n", &storage);
-     //   storage.ss_family = AF_INET;
-  
-
+        struct sockaddr_storage storage  = rl->resolve_info.storage[rl->resolve_info.qty -1];
         if(rl->resolve_info.type == IPV4){
             printf("resolve done es ipv4\n");
             struct sockaddr_in  * sin = (struct sockaddr_in * ) &storage;
@@ -614,6 +609,7 @@ static unsigned request_resolve_done(struct selector_key * key){
             sin6->sin6_port = rl->request_line_data.request_target.port;
 
         }
+        rl->resolve_info.qty--;
         data->origin_addr_len = sizeof(storage);
         memcpy(&data->origin_addr,&storage,data->origin_addr_len);
         rl->resolve_info.qty--;

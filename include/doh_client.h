@@ -8,6 +8,8 @@
 
 #include "../include/dns.h"
 
+#include "../include/doh_response.h"
+
 #define MAX_BUFFER_SIZE 1024 //TODO Alcanza?
 
 
@@ -15,12 +17,7 @@
 
 
 
-typedef struct address_resolve_info{
-    int qty; //cant d ips en el storage
-    struct sockaddr_storage * storage;
-    enum ip_type type;
 
-}address_resolve_info;
 
 enum parse_response_state {
     waiting_crlf,
