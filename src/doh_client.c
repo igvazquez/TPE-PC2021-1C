@@ -33,7 +33,6 @@ int init(doh * doh, char * fqdn){
     doh->server_info = get_doh_info();
     printf("resolve init\n");
 
-
     return 1;
 }
 
@@ -125,10 +124,8 @@ void get_response(doh * doh , doh_response * doh_response){
     }
     printf("termine de eat bytes\n");
 
-    //memset(doh->resolve_info->storage, 0, sizeof(struct sockaddr_storage));
-    doh->resolve_info->qty = 0;
-    printf("llamo parse_answer\n");
-    doh_response->dns_response_parsed = *parse_answer(doh_response->dns_response,doh_response->content_length,&doh->resolve_info->storage, &doh->resolve_info->qty);
+
+    doh_response->dns_response_parsed = *parse_answer(doh_response->dns_response,doh_response->content_length,doh->resolve_info);
 
 
 }
@@ -164,6 +161,8 @@ void doh_read(struct selector_key * key){
 
         return;
     }
+
+    return;
     finally:
     selector_set_interest(key->s,current_doh->client_socket,OP_WRITE);
    // free(current_doh->resolve_info->storage);
@@ -238,6 +237,8 @@ char * create_doh_get_req (doh * doh, size_t * req_len){
     http_req[http_req_len] = 0;
     *req_len = http_req_len +1 ;
 
+    for(int i = 0;i < http_req_len +1;i++)
+        putchar(http_req[i]);
     return http_req;
 }
 
@@ -294,7 +295,6 @@ void doh_write (struct selector_key * key){
                     goto finally;
 
             }
-
 
             return;
         }

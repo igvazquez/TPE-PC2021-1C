@@ -1,14 +1,10 @@
 #ifndef DNS__H
 #define DNS__H
 #include <stdlib.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+
+#include "../include/doh_response.h"
 
 
-enum ip_type{
-    IPV4= 0,
-    IPV6
-};
 
 enum RESPONSE_CODE {
     NO_ERROR,
@@ -53,7 +49,7 @@ void generate_query(char * fqdn,unsigned  char * result, int * dns_query_size, e
 
 
 
-dns_response * parse_answer(unsigned char * response, size_t bytes, struct sockaddr_storage ** storage, int * qty);
+dns_response * parse_answer(unsigned char * response, size_t bytes, address_resolve_info  * resolve_info);
 
 
 #endif
