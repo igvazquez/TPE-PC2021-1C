@@ -132,7 +132,7 @@ dns_response * parse_answer(unsigned char * response, size_t bytes, address_reso
 
 
                 ipv4.sin_addr.s_addr = aux;
-                memcpy(&resolve_info->storage[rta_num], (struct  sockaddr_storage *) &ipv4,sizeof(ipv4));
+                memcpy(&resolve_info->storage[resolve_info->qty], (struct  sockaddr_storage *) &ipv4,sizeof(ipv4));
 
                 (resolve_info->qty)++;
 
@@ -143,11 +143,14 @@ dns_response * parse_answer(unsigned char * response, size_t bytes, address_reso
                 memset(&ipv6,0,sizeof(struct sockaddr_in6));
                 ipv6.sin6_family = AF_INET6;
                 memcpy(ipv6.sin6_addr.__in6_u.__u6_addr8, response + idx, data_length);
-                memcpy(&resolve_info->storage[rta_num], (struct  sockaddr_storage *) &ipv6,sizeof(ipv6));
+                memcpy(&resolve_info->storage[resolve_info->qty], (struct  sockaddr_storage *) &ipv6,sizeof(ipv6));
                 (resolve_info->qty)++;
             }
+            else{
+                idx += data_length;
+            }
 
-            response += idx;
+            response += idx ;
 
         }
 
