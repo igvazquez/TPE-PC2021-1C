@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <stdint.h>
 #define MAX_HEADER_NAME_LENGTH 64
-#define MAX_HEADER_VALUE_LENGTH 128
+#define MAX_HEADER_VALUE_LENGTH 256
 
 struct parser;
 enum request_message_event_type
@@ -39,7 +39,7 @@ typedef struct request_message_parser
 
     bool save_data;
     uint8_t *data ;
-    uint8_t data_index;
+    uint64_t data_index;
     unsigned data_size;
     // array de headers los cuales me interesa detectar
     struct header *headers_to_detect;

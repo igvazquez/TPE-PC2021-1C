@@ -466,7 +466,6 @@ handle_iteration(fd_selector s) {
     struct selector_key key = {
         .s = s,
     };
-    fd_selector aux;
     for (int i = 0; i <= n; i++) {
 
         struct item *item = s->fds + i;
@@ -480,17 +479,14 @@ handle_iteration(fd_selector s) {
                     if(0 == item->handler->handle_read) {
                         assert(("OP_READ arrived but no handler. bug!" == 0));
                     } else {
-                        aux = s;
-                       
                         item->handler->handle_read(&key);
-                       
                     }
                 }
             }
 
 
             //FIXME CRASHEA ACA
-            if (FD_ISSET(i, &(aux->slave_w)))
+            if (FD_ISSET(i, &(s->slave_w)))
             {
            
                 if(OP_WRITE & item->interest) {

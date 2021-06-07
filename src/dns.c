@@ -1,11 +1,12 @@
 #include "../include/dns.h"
+#include "../include/netutils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include "../include/netutils.h"
+
 
 /*
 <33 bytes represented by the following hex encoding>
@@ -124,23 +125,21 @@ dns_response * parse_answer(unsigned char * response, size_t bytes, struct socka
 
                ipv4.sin_addr.s_addr = aux;
                memcpy(*storage + rta_num, (struct sockaddr_storage *)&ipv4, sizeof(ipv4));
-
-
-
-            } else {
+               (*qty)++;
+            } else if(qtype == AAAA_QTYPE){
                 printf(" es ipv6\n");
                 struct sockaddr_in6 ipv6;
                 memset(&ipv6,0,sizeof(struct sockaddr_in6));
                 ipv6.sin6_family = AF_INET6;
+                printf("%d\n", data_length);
                 memcpy(ipv6.sin6_addr.__in6_u.__u6_addr8, response + idx, data_length);
                 memcpy(*storage +rta_num, (struct  sockaddr_storage *) &ipv6,sizeof(ipv6));
-
+                (*qty)++;
             }
-            char buff[60];
-            sockaddr_to_human(buff,60,(const struct sockaddr*)(*storage + rta_num));
-            printf("1 dns storage[%d] = %s\n", rta_num, buff);
+//            char buff[60];
+//            sockaddr_to_human(buff,60,(const struct sockaddr*)(*storage + rta_num));
+//            printf("1 dns storage[%d] = %s\n", rta_num, buff);
 
-            (*qty)++;
             response += idx;
 
         }

@@ -32,11 +32,9 @@ int init(doh * doh, char * fqdn){
     doh->FQDN = fqdn;
     doh->server_info = get_doh_info();
     printf("resolve init\n");
- 
+
 
     return 1;
-
-
 }
 
 
@@ -297,7 +295,7 @@ void doh_write (struct selector_key * key){
 
             }
 
-              
+
             return;
         }
     }

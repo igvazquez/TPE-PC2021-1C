@@ -601,7 +601,7 @@ static unsigned request_resolve_done(struct selector_key * key){
         struct sockaddr_storage storage  = rl->resolve_info.storage[rl->resolve_info.qty-1];
            printf("2 storage dir: %p\n", &storage);
      //   storage.ss_family = AF_INET;
-  
+
 
         if(rl->resolve_info.type == IPV4){
             printf("resolve done es ipv4\n");
@@ -1208,7 +1208,7 @@ static void response_message_init(const unsigned state,struct selector_key *key)
     printf("response message init\n");
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.request_message;
-    rm->rb = &data->from_client_buffer;
+    rm->rb = &data->from_origin_buffer;
     request_message_parser_init(&rm->parser,1,true);
     add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
     
@@ -1216,14 +1216,14 @@ static void response_message_init(const unsigned state,struct selector_key *key)
     {
         abort();
     }
-   /* if(buffer_can_read(rm->rb)){
+    if(buffer_can_read(rm->rb)){
         printf("buffer can read\n");
         // ademas de la request line, se escribieron headers y/o body en el buffer de lectura del cliente
         if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_WRITE))
         {
             abort();
         }
-    }*/
+    }
 }
 
 
