@@ -800,7 +800,7 @@ static void request_line_write_init(const unsigned state,struct selector_key *ke
  
 
 
-    if(-1 == sprintf((char*)rl->data.data_to_send,"%s %s HTTP/%d.%d\r\n",(char*)rl->request_line_data.method,(char*)rl->request_line_data.request_target.origin_form,VERSION_MAJOR,VERSION_MINOR})){
+    if(-1 == sprintf((char*)rl->data.data_to_send,"%s %s HTTP/%d.%d\r\n",(char*)rl->request_line_data.method,(char*)rl->request_line_data.request_target.origin_form,VERSION_MAJOR,VERSION_MINOR)){
         abort();
     }
     rl->data.data_to_send[rl->data.data_to_send_len] = '\0';
