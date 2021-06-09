@@ -123,8 +123,9 @@ static void log_register(struct log_data *log_data, char reg_type) {
             set_address_string(*log_data->client_addr, client_address_str ,client_addr_length);
             char* format = "%s\tA\t%s\t%d\t%s\thttp://%s%s\t%s\n";
             char *origin_form = log_data->origin_form;
-            n = snprintf(buffer,2024,format, log_data->date,client_address_str, ntohs(get_address_port(*log_data->client_addr)), log_data->method, get_origin_string(log_data->origin_addr,log_data->origin_addr_type,log_data->origin_port),origin_form, log_data->status_code);
-            
+            char *origin_addr = get_origin_string(log_data->origin_addr, log_data->origin_addr_type, log_data->origin_port);
+            n = snprintf(buffer,2024,format, log_data->date,client_address_str, ntohs(get_address_port(*log_data->client_addr)), log_data->method,origin_addr ,origin_form, log_data->status_code);
+            free(origin_addr);
     }else if(reg_type == 'P'){
         char *origin_addr = get_origin_string(log_data->origin_addr, log_data->origin_addr_type, log_data->origin_port);
         char *host;

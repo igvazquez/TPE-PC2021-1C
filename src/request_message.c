@@ -434,29 +434,14 @@ bool  request_message_parser_consume(struct request_message_parser * parser,buff
     bool done = false;
     const struct parser_event *e;
     size_t rbytes;
-    printf("llega aca 1\n");
     buffer_read_ptr(b, &rbytes);
-      printf("llega aca 2\n");
-      if(parser == NULL){
-          printf("parser es null\n");
-      }
-    if(parser->save_data){
-             if(parser == NULL){
-          printf("parser es null\n");
-      }
-          printf("llega aca 3\n");
-        if(parser->data == NULL){
-                 if(parser == NULL){
-          printf("parser es null\n");
-      }
-              printf("llega aca 4\n");
-            parser->data = (uint8_t *)malloc(rbytes+3);
 
+    if(parser->save_data){
+        if(parser->data == NULL){
+            parser->data = (uint8_t *)malloc(rbytes+3);
             parser->data_size = rbytes;
-              printf("llega aca 5\n");
         }else if(parser->data_size < rbytes){
             parser->data = (uint8_t *)realloc(parser->data,parser->data_size + rbytes);
-              printf("llega aca 6\n");
         }
         if(parser->data == NULL){
             done = true;
@@ -468,11 +453,9 @@ bool  request_message_parser_consume(struct request_message_parser * parser,buff
     while (buffer_can_read(b) && !done)
     {  
         uint8_t c = buffer_read(b); 
-          printf("llega aca 7\n"); 
         e = parser_feed(parser->rm_parser, c);
         printf("leo %c\n", (char)c);
         do{
-
             done = request_message_parser_process(e,parser,log_data,status);
             // Podria meterlo todo en request_message_parser_process pero quiero reutilizar la funcion para el disector y no necesito esto
            
@@ -562,11 +545,12 @@ void request_message_parser_destroy(struct request_message_parser *parser){
     {
         h = parser->headers_to_detect[i];
         parser_utils_strcmpi_destroy(h.name_parser->def);
-     
+        free((void*)h.name_parser->def);
         parser_destroy(h.name_parser);
     }
     free(parser->headers_to_detect);
     free(parser->data);
+    parser_destroy(parser->rm_parser);
 }
 
 char *get_detection_value(struct request_message_parser *parser){

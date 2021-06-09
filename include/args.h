@@ -47,5 +47,5 @@ bool get_disectors_enabled();
 
 
 struct doh_args get_doh_info();
-
+void free_args();
 #endif

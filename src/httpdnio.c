@@ -50,6 +50,7 @@ static unsigned connecting_done(struct selector_key *key);
 
 static void request_line_read_init(const unsigned state,struct selector_key *key);
 static unsigned request_line_read(struct selector_key *key);
+static void request_line_read_on_departure(const unsigned state,struct selector_key *key);
 
 static unsigned request_resolve_done(struct selector_key *key);
 
@@ -59,6 +60,7 @@ static void request_line_write_on_departure(const unsigned state, struct selecto
 
 static void response_line_read_init(const unsigned state,struct selector_key *key);
 static unsigned response_line_read(struct selector_key *key);
+static void response_line_read_on_departure(const unsigned state, struct selector_key *key);
 
 static void response_line_write_init(const unsigned state,struct selector_key *key);
 static void response_line_write_on_departure(const unsigned state,struct selector_key *key);
@@ -76,6 +78,7 @@ static void response_message_on_departure(const unsigned state, struct selector_
 
 static void error_init(const unsigned state,struct selector_key * key);
 static unsigned error_write(struct selector_key* key);
+static void error_on_departure(const unsigned state, struct selector_key *key);
 
 static void copy_init(const unsigned state,struct selector_key *key);
 static unsigned copy_read(struct selector_key *key);
@@ -196,7 +199,7 @@ struct httpd {
     union {
         struct connecting_st connecting;
         struct response_line_st response_line;
-        struct request_message_st request_message;
+        struct request_message_st response_message;
         struct copy_st copy;
     } origin;
 
@@ -207,6 +210,7 @@ struct httpd {
     struct http_disector http_disector;
     struct pop3_disector pop3_disector;
 
+    unsigned references;
 };
 
 /** Definición de handlers para cada estado */
@@ -215,7 +219,8 @@ static const struct state_definition client_statbl[] = {
     {
      .state = REQUEST_LINE_READ,
      .on_arrival = request_line_read_init,
-     .on_read_ready = request_line_read
+     .on_read_ready = request_line_read,
+     .on_departure = request_line_read_on_departure
      },
      {
       .state = REQUEST_RESOLVE,
@@ -241,7 +246,8 @@ static const struct state_definition client_statbl[] = {
     {
         .state = RESPONSE_LINE_READ,
         .on_arrival = response_line_read_init,
-        .on_read_ready = response_line_read
+        .on_read_ready = response_line_read,
+        .on_departure = response_line_read_on_departure,
     },
     {
         .state = RESPONSE_LINE_WRITE,
@@ -268,7 +274,8 @@ static const struct state_definition client_statbl[] = {
     {
         .state = ERROR,
         .on_arrival = error_init,
-        .on_write_ready = error_write
+        .on_write_ready = error_write,
+        .on_departure = error_on_departure,
     }
 };
 
@@ -325,11 +332,39 @@ httpd_block(struct selector_key *key) {
     }
 }
 
-static void
-httpd_close(struct selector_key *key) {
-   // socks5_destroy(ATTACHMENT(key));
+static void free_state(struct httpd*s){
+    parser_destroy(s->http_disector.rl_parser);
+    request_message_parser_destroy(&s->http_disector.rm_parser);
+    parser_destroy(s->pop3_disector.parser);
+    free(s);
 }
 
+static void
+httpd_destroy(struct httpd *s) {
+    if(s == NULL) {
+        // nada para hacer
+    } else if(s->references == 1) {
+       
+           /* if(pool_size < max_pool) {
+                s->next = pool;
+                pool    = s;
+                pool_size++;
+            } else {
+                socks5_destroy_(s);
+            }*/
+             printf("free state\n");
+           free_state(s);
+    } else {
+        s->references -= 1;
+        printf("state references -=1\n");
+    }
+}
+
+
+static void
+httpd_close(struct selector_key *key) {
+   httpd_destroy(ATTACHMENT(key));
+}
 static void
 httpd_done(struct selector_key* key) {
     const int fds[] = {
@@ -370,6 +405,7 @@ static struct httpd *httpd_new(int client_fd){
     pop3_disector_init(&ret->pop3_disector,&ret->log_data);
     //Como default es 200 por si el cliente cierra la conexión antes de terminar de enviar la request
     strcpy(ret->log_data.status_code, "200");
+    ret->references = 1;
     return ret;
 }
 
@@ -467,6 +503,7 @@ static unsigned request_line_read(struct selector_key *key)
                         printf("domain origen: %s\n", rl->parser.parsed_info.host.domain_or_ipv4_buffer);
                         break;
                 }
+                printf("Metodo: %s\n", rl->request_line_data.method);
                 printf("puerto: %d\n", ntohs(rl->request_line_data.request_target.port));
                 printf("version %d.%d\n", rl->parser.parsed_info.version_major, rl->parser.parsed_info.version_minor);
                 printf("origin form: %s\n", rl->parser.parsed_info.origin_form_buffer);
@@ -553,6 +590,14 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
     finally:
         return ret;
 }
+
+static void request_line_read_on_departure(const unsigned state,struct selector_key *key){
+    struct httpd *data = ATTACHMENT(key);
+    struct request_line_st* rl = &(data->client.request_line);
+    parser_destroy(rl->parser.rl_parser);
+    free(rl->resolve_info.storage);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // REQUEST RESOLVE
 ////////////////////////////////////////////////////////////////////////////////
@@ -631,10 +676,10 @@ static unsigned connect_to_origin(int origin_family,struct selector_key*key){
             // se esta conectando
             printf("Connect to origin EINPROGRESS origin_fd %d\n",origin_fd);
             // registro el origin_fd para escritura para que me avise cuando si conectó o falló conexión
-    
 
+            data->references += 1;
             selector_status ss = selector_register(key->s, origin_fd, &httpd_handler, OP_WRITE, data);
-          
+
             if(ss != SELECTOR_SUCCESS){
                 data->status = INTERNAL_SERVER_ERROR;
                 goto finally;
@@ -738,7 +783,7 @@ static void request_line_write_init(const unsigned state,struct selector_key *ke
     size_t origin_form_len = strlen((char*)rl->request_line_data.request_target.origin_form);
 
     rl->data.data_to_send_len = method_len + origin_form_len + 12;
-    rl->data.data_to_send = (uint8_t*)malloc( rl->data.data_to_send_len);
+    rl->data.data_to_send = (uint8_t*)malloc(rl->data.data_to_send_len+1);
  
     if(-1 == sprintf((char*)rl->data.data_to_send,"%s %s HTTP/%d.%d\r\n",(char*)rl->request_line_data.method,(char*)rl->request_line_data.request_target.origin_form,VERSION_MAJOR,VERSION_MINOR)){
         abort();
@@ -758,7 +803,6 @@ static void request_line_write_on_departure(const unsigned state,struct selector
     struct httpd *data = ATTACHMENT(key);
     struct request_line_st* rl = &(data->client.request_line);
     free(rl->data.data_to_send);
-
 }
 
 static bool send_buffer(int read_fd,int write_fd, buffer *b,fd_selector s, struct data_to_send* data,bool *error){
@@ -1018,6 +1062,14 @@ static unsigned request_message_write(struct selector_key* key){
     return ret;
 }
 
+static void request_message_on_departure(const unsigned state, struct selector_key *key){
+    assert(state == REQUEST_MESSAGE);
+    struct httpd *data = ATTACHMENT(key);
+    struct request_message_st *rm = &data->client.request_message;
+    request_message_parser_destroy(&rm->parser);
+    printf("request_message on departure\n");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // RESPONSE LINE
 ////////////////////////////////////////////////////////////////////////////////
@@ -1085,12 +1137,12 @@ static unsigned response_line_read(struct selector_key *key)
 finally:
     return ret;
 }
-static void request_message_on_departure(const unsigned state, struct selector_key *key){
-    assert(state == REQUEST_MESSAGE);
+
+static void response_line_read_on_departure(const unsigned state, struct selector_key *key){
+    assert(state == RESPONSE_LINE_READ);
     struct httpd *data = ATTACHMENT(key);
-    struct request_message_st *rm = &data->client.request_message;
-    request_message_parser_destroy(&rm->parser);
-    printf("request_message on departure\n");
+    struct response_line_st* rl = &(data->origin.response_line);
+    parser_destroy(rl->parser.rl_parser);
 }
 
 
@@ -1166,7 +1218,7 @@ static void response_message_init(const unsigned state,struct selector_key *key)
     printf("response message init\n");
     assert(state == RESPONSE_MESSAGE);
     struct httpd *data = ATTACHMENT(key);
-    struct request_message_st *rm = &data->origin.request_message;
+    struct request_message_st *rm = &data->origin.response_message;
     rm->rb = &data->client_write;
     request_message_parser_init(&rm->parser,1,true);
     add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
@@ -1189,7 +1241,7 @@ static void response_message_init(const unsigned state,struct selector_key *key)
 static unsigned response_message_write(struct selector_key* key){
       printf("response message write\n");
     struct httpd *data = ATTACHMENT(key);
-    struct request_message_st *rm = &data->origin.request_message;
+    struct request_message_st *rm = &data->origin.response_message;
 
     buffer *client_wb = rm->rb;
     printf("llega aca\n");
@@ -1221,7 +1273,7 @@ finally:
 static unsigned response_message_read(struct selector_key* key){
       printf("response message read\n");
     struct httpd *data = ATTACHMENT(key);
-    struct request_message_st *rm = &data->origin.request_message;
+    struct request_message_st *rm = &data->origin.response_message;
     buffer * origin_rb = rm->rb;
     data->status = OK;
     unsigned ret = RESPONSE_MESSAGE;
@@ -1241,7 +1293,7 @@ static void response_message_on_departure(const unsigned state, struct selector_
     printf("response message on departure\n");
     assert(state == RESPONSE_MESSAGE);
     struct httpd *data = ATTACHMENT(key);
-    struct request_message_st *rm = &data->origin.request_message;
+    struct request_message_st *rm = &data->origin.response_message;
     request_message_parser_destroy(&rm->parser);
     printf("response message on departure end\n");
 }
@@ -1284,7 +1336,6 @@ static void error_init(const unsigned state,struct selector_key * key){
 static unsigned error_write(struct selector_key* key){
     printf("ERROR_WRITE\n");
     struct httpd *data = ATTACHMENT(key);
-    assert(data->client_fd == key->fd);
 
     struct response_line_st* rl = &(data->origin.response_line);
 
@@ -1302,6 +1353,14 @@ static unsigned error_write(struct selector_key* key){
     }
 
     return ret;
+}
+
+static void error_on_departure(const unsigned state, struct selector_key *key){
+    printf("ERROR ON DEPARTURE\n");
+    struct httpd *data = ATTACHMENT(key);
+
+    struct response_line_st * rl = &data->origin.response_line;
+    free(rl->data.data_to_send);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

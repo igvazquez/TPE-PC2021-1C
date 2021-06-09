@@ -253,6 +253,7 @@ finally:
     if(serverV6 >= 0) {
         close(serverV6);
     }
+    free_args();
     return ret;
 }
 

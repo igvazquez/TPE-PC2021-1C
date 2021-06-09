@@ -21,29 +21,24 @@ void doh_read(struct selector_key *key);
 void doh_write(struct selector_key *key);
 void doh_close(struct selector_key * key);
 fd_handler handler = {
+    .handle_close = doh_close,
     .handle_write = doh_write,
     .handle_read =  doh_read,
 };
-
 void doh_init(doh * doh, char * fqdn){
     buffer_init(&doh->buffer,N(doh->data),doh->data);
     doh->FQDN = fqdn;
     doh->server_info = get_doh_info();
 }
-void doh_close(struct selector_key * key){
-    doh_kill(key);
+void doh_close(struct selector_key * key){   
+    free((void*)DOH_ATTACHMENT(key));
 }
 
 
 
 resolve_status resolve (char *fqdn, fd_selector selector, int request_socket, address_resolve_info * resolve_info){
 
-    doh * doh = malloc(sizeof(struct doh));
-    if (doh == NULL){
-        goto finally;
-    }
-    doh->resolve_info = resolve_info;
-    doh_init(doh,fqdn);  
+
     int fd = socket(AF_INET,SOCK_STREAM,0);
     if(fd ==-1){
         goto finally;
@@ -53,7 +48,12 @@ resolve_status resolve (char *fqdn, fd_selector selector, int request_socket, ad
 
         goto finally;
     }
-
+    doh * doh = malloc(sizeof(struct doh));
+    if (doh == NULL){
+        goto finally;
+    }
+    doh->resolve_info = resolve_info;
+    doh_init(doh,fqdn);  
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -84,7 +84,10 @@ finally:
     if(fd != -1){
         close(fd);
     }
-    free(doh);
+    if(doh != NULL){
+        free(doh);
+    }
+
     return RESOLVE_ERROR;
 }
 
@@ -128,10 +131,13 @@ void doh_read(struct selector_key * key){
             sockaddr_to_human(buff,60,(const struct sockaddr*)current_doh->resolve_info->storage);
         if (response.current_state == finished){
             current_doh->resolve_info->status = RESOLVE_OK;
-            doh_kill(key);
+            free(response.dns_response);
+            free(&response.dns_response_parsed);
+          
             if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
                 close_client(key);
             }
+            doh_kill(key);
             return;
         }else if(response.current_state == error){
                goto finally;
@@ -143,10 +149,13 @@ void doh_read(struct selector_key * key){
     }
     finally:
         current_doh->resolve_info->status = RESOLVE_ERROR;
+        free(response.dns_response);
+        free(&response.dns_response_parsed);
+        doh_kill(key);
         if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
             close_client(key);
         }
-        doh_kill(key);
+
 
 }
 
@@ -156,11 +165,7 @@ void doh_kill(struct selector_key * key){
     if(selector_unregister_fd(key->s,current_doh->socket) == -1){
         abort();
     }
-     
-    if(close(current_doh->socket) == -1){
-        abort();
-    }
-    free(current_doh);
+  
 }
 
 //arma la query en http con metodo GET
@@ -209,7 +214,7 @@ char * create_doh_get_req (doh * doh, size_t * req_len){
         memcpy(http_req + offset,tokens[i],sizes[i]);
         offset += sizes[i];
     }
-
+    free(QUERY_ENCODED);
     http_req[http_req_len] = 0;
     *req_len = http_req_len +1 ;
 
