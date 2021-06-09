@@ -26,21 +26,6 @@ port(const char *s) {
 }
 
 static void
-user(char *s, struct users *user) {
-    char *p = strchr(s, ':');
-    if(p == NULL) {
-        fprintf(stderr, "password not found\n");
-        exit(1);
-    } else {
-        *p = 0;
-        p++;
-        user->name = s;
-        user->pass = p;
-    }
-
-}
-
-static void
 version(void) {
     fprintf(stderr, "httpd version 0.0\n"
                     "ITBA Protocolos de ComunicaciÃ³n 2020/1 -- Grupo 08\n"
@@ -159,15 +144,6 @@ parse_args(const int argc,const char **argv) {
             case 'P':
                 args->mng_port   = port(optarg);
                 break;
-            case 'u':
-                if(nusers >= MAX_USERS) {
-                    fprintf(stderr, "maximun number of command line users reached: %d.\n", MAX_USERS);
-                    exit(1);
-                } else {
-                    user(optarg, args->users + nusers);
-                    nusers++;
-                }
-                break;
             case 'v':
                 version();
                 exit(0);
@@ -219,4 +195,8 @@ bool get_disectors_enabled(){
 
 struct doh_args get_doh_info(){
     return args->doh;
+}
+
+void free_args(){
+    free(args);
 }

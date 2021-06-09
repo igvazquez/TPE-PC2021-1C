@@ -5,10 +5,6 @@
 
 #define MAX_USERS 10
 
-struct users {
-    char *name;
-    char *pass;
-};
 
 struct doh_args {
     char           *host;
@@ -29,7 +25,7 @@ struct httpdargs {
     bool            disectors_enabled;
 
     struct doh_args      doh;
-    struct users    users[MAX_USERS];
+
 };
 
 /**

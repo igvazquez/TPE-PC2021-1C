@@ -111,9 +111,8 @@ void get_response(doh * doh , doh_response * doh_response){
         eat_byte(doh_response,byte);
         state = doh_response->current_state;
     }
-    doh_response->dns_response_parsed = *parse_answer(doh_response->dns_response,doh_response->content_length,doh->resolve_info);
 
-
+    parse_answer(doh_response->dns_response,doh_response->content_length,doh->resolve_info);
 }
 
 void doh_read(struct selector_key * key){
@@ -127,13 +126,12 @@ void doh_read(struct selector_key * key){
     if (r_bytes > 0 ){
         buffer_write_adv(&current_doh->buffer,r_bytes);
         get_response(current_doh,&response);
-            char buff[60];
-            sockaddr_to_human(buff,60,(const struct sockaddr*)current_doh->resolve_info->storage);
         if (response.current_state == finished){
             current_doh->resolve_info->status = RESOLVE_OK;
+            printf("doh finished\n");
             free(response.dns_response);
-            free(&response.dns_response_parsed);
-          
+            printf("doh finished free\n");
+
             if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
                 close_client(key);
             }
@@ -149,14 +147,14 @@ void doh_read(struct selector_key * key){
     }
     finally:
         current_doh->resolve_info->status = RESOLVE_ERROR;
+        printf("doh finally\n");
         free(response.dns_response);
-        free(&response.dns_response_parsed);
-        doh_kill(key);
-        if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
+        printf("doh finally free\n");
+
+    if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
             close_client(key);
         }
-
-
+       doh_kill(key);
 }
 
 void doh_kill(struct selector_key * key){
@@ -165,7 +163,9 @@ void doh_kill(struct selector_key * key){
     if(selector_unregister_fd(key->s,current_doh->socket) == -1){
         abort();
     }
-  
+    if(close(current_doh->socket) == -1){
+        abort();
+    }
 }
 
 //arma la query en http con metodo GET
@@ -235,7 +235,7 @@ int doh_request(doh * doh){
         return EXIT_FAILURE;
     }
     memcpy(w_buffer,req,req_len);
-
+     
     buffer_write_adv(&doh->buffer,req_len);
 
     free(req);
@@ -281,12 +281,12 @@ void doh_write (struct selector_key * key){
 
     finally:
         current_doh->resolve_info->status = RESOLVE_ERROR;
-        doh_kill(key);
+     
         if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
             //si falla entonces cierro desde aca la conexión con el cliente
             close_client(key);
         }
-            
+        doh_kill(key);   
       
 
 }
@@ -296,7 +296,5 @@ static void close_client(struct selector_key *key){
     if(SELECTOR_SUCCESS != selector_unregister_fd(key->s, DOH_ATTACHMENT(key)->client_socket)) {
         abort();
     }
-    if(close(DOH_ATTACHMENT(key)->client_socket)){
-        abort();
-    }
+
 }

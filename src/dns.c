@@ -74,7 +74,7 @@ void parse_header(dns_response * parsed_response, unsigned char * response) {
 }
 
 
-dns_response * parse_answer(unsigned char * response, size_t bytes, address_resolve_info * resolve_info) {
+void parse_answer(unsigned char * response, size_t bytes, address_resolve_info * resolve_info) {
     dns_response *parsed_response = malloc(sizeof(struct dns_response));
     if (parsed_response != NULL) {
 
@@ -127,12 +127,9 @@ dns_response * parse_answer(unsigned char * response, size_t bytes, address_reso
             else{
                 idx += data_length;
             }
-
             response += idx ;
-
         }
-
-        return parsed_response;
+        free(parsed_response);
     }
 }
 

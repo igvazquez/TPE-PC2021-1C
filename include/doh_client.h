@@ -29,7 +29,6 @@ enum parse_response_state {
 };
 
 typedef struct doh_response {
-    dns_response dns_response_parsed;
     uint8_t  * dns_response;
     int content_length;
     enum parse_response_state current_state;

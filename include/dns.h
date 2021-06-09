@@ -47,9 +47,7 @@ typedef struct dns_response {
 
 void generate_query(char * fqdn,unsigned  char * result, int * dns_query_size, enum ip_type ip_type);
 
-
-
-dns_response * parse_answer(unsigned char * response, size_t bytes, address_resolve_info  * resolve_info);
+void parse_answer(unsigned char * response, size_t bytes, address_resolve_info  * resolve_info);
 
 
 #endif

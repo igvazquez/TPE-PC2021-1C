@@ -454,7 +454,6 @@ bool  request_message_parser_consume(struct request_message_parser * parser,buff
     {  
         uint8_t c = buffer_read(b); 
         e = parser_feed(parser->rm_parser, c);
-        printf("leo %c\n", (char)c);
         do{
             done = request_message_parser_process(e,parser,log_data,status);
             // Podria meterlo todo en request_message_parser_process pero quiero reutilizar la funcion para el disector y no necesito esto

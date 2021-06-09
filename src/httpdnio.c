@@ -451,9 +451,7 @@ fail:
     if(client != -1) {
         close(client);
     }
-    free(state);
-    //TODO liberar bien los recursos
-    //socks5_destroy(state);
+    httpd_destroy(state);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1368,7 +1366,7 @@ static void error_on_departure(const unsigned state, struct selector_key *key){
 ////////////////////////////////////////////////////////////////////////////////
 
 static void copy_init(const unsigned state,struct selector_key *key){
-    printf("copy init\n");
+    printf("%d) copy init\n", key->fd);
     assert(state == COPY);
     struct httpd *data = ATTACHMENT(key);
     struct copy_st *copy = &data->client.copy;
@@ -1430,11 +1428,7 @@ static unsigned copy_read(struct selector_key *key){
 
     unsigned ret = COPY;
 
-   
-    if(numBytesRead < 0){
-        data->status = INTERNAL_SERVER_ERROR;
-        ret = ERROR;
-    }else if(numBytesRead == 0){
+   if(numBytesRead <= 0){
         // si llega EOF entonces debo quitar OP_READ del copy actual y OP_WRITE del copy_to
         // la conexión no termina ya que puede quedar data en el buffer con dirección contraria
         copy->interest &= ~OP_READ;
@@ -1478,10 +1472,7 @@ static unsigned copy_write(struct selector_key *key){
     unsigned ret = COPY;
 
  
-    if(numBytesWritten < 0){
-        data->status = INTERNAL_SERVER_ERROR;
-        ret = ERROR;
-    }else if(numBytesWritten == 0){
+   if(numBytesWritten == 0){
         // si llega EOF entonces debo quitar OP_WRITE del copy actual y OP_READ del copy_to
         // la conexión no termina ya que puede quedar data en el buffer con dirección contraria
         copy->interest &= ~OP_WRITE;
