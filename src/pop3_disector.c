@@ -430,8 +430,6 @@ void pop3_disector_consume(struct pop3_disector *disector, buffer *b){
     size_t nBytes;
     uint8_t* readPtr = buffer_read_ptr(b,&nBytes);
     uint8_t c;
-
-    printf("pop3 consume\n");
     for (unsigned i = 0; i < nBytes;i++){
         c = readPtr[i];
         e = parser_feed(disector->parser, c);

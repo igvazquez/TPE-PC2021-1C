@@ -378,7 +378,6 @@ selector_register(fd_selector        s,
         if(fd > s->max_fd) {
             
             s->max_fd = fd;
-            printf("actualizo max: %d\n", s->max_fd);
         }
     
         items_update_fdset_for_fd(s, item);
@@ -392,8 +391,6 @@ selector_status
 selector_unregister_fd(fd_selector       s,
                        const int         fd) {
     selector_status ret = SELECTOR_SUCCESS;
-    printf("UNREGISTER FD \n");
-
     if(NULL == s || INVALID_FD(fd)) {
         ret = SELECTOR_IARGS;
         goto finally;

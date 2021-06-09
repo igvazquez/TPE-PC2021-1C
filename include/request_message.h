@@ -5,6 +5,7 @@
 #include "../include/parser.h"
 #include "../include/buffer.h"
 #include "../include/register_log.h"
+#include "../include/error_responses.h"
 #include <stdbool.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -81,7 +82,7 @@ typedef enum
 
 struct header{
     // funcion que corre cuando se termina de leer el value del header
-    void    (*on_value_end)(struct request_message_parser*parser,struct log_data * log_data);
+    void    (*on_value_end)(struct request_message_parser*parser,struct log_data * log_data,error_status_code *status);
 
    
     // parser del header name
@@ -90,8 +91,6 @@ struct header{
     bool* detected;
  
     header_interest interest;
-
-
 
     /* storage del value del header
      * según el RFC 7230 el value del header no tiene un límite
@@ -105,11 +104,11 @@ struct header{
 
 void header_parsers_feed(const struct parser_event* incoming,struct request_message_parser* parser);
 void request_message_parser_init(struct request_message_parser*parser, unsigned header_quantity,bool save_data);
-void add_header(struct request_message_parser *parser, char *header_name,header_interest interest ,const char* replacement, void (*on_value_end)(struct request_message_parser*parser,struct log_data *log_data));
+void add_header(struct request_message_parser *parser, char *header_name,header_interest interest ,const char* replacement, void (*on_value_end)(struct request_message_parser*parser,struct log_data *log_data,error_status_code *status));
 void request_message_parser_reset(struct request_message_parser *parser);
 void request_message_parser_destroy(struct request_message_parser *parser);
-bool request_message_parser_process(const struct parser_event *e, request_message_parser *parser,bool * error,struct log_data * log_data);
+bool request_message_parser_process(const struct parser_event *e, request_message_parser *parser,struct log_data * log_data,error_status_code *status);
 char *get_detection_value(struct request_message_parser *parser);
 void set_content_length(struct request_message_parser *parser, long content_length);
-bool request_message_parser_consume(struct request_message_parser *parser, buffer *b, bool *error,struct log_data * log_data);
+bool request_message_parser_consume(struct request_message_parser *parser, buffer *b,struct log_data * log_data,error_status_code *status);
 #endif

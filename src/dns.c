@@ -76,26 +76,16 @@ void parse_header(dns_response * parsed_response, unsigned char * response) {
 
 dns_response * parse_answer(unsigned char * response, size_t bytes, address_resolve_info * resolve_info) {
     dns_response *parsed_response = malloc(sizeof(struct dns_response));
-
-    printf("parse_answer\n");
-
     if (parsed_response != NULL) {
 
         parse_header(parsed_response,response);
-
-
         resolve_info->storage = calloc(1,sizeof( struct sockaddr_storage) * parsed_response->header.ans_count);
         resolve_info->qty = 0;
-
-       // memset(resolve_info->storage, 0, sizeof(struct sockaddr_storage) * parsed_response->header.ans);
-        printf("lei %d ips\n", parsed_response->header.ans_count);
 
         int idx = 12;
         while (response[idx] != 0x00) idx++;
         idx += 5; //Consumimos el 0x00 de fin de qname y 4 de qtype y qclass
         response += idx;
-       // memset(resolve_info->storage, 0, sizeof(resolve_info->storage));
-
         for (int rta_num = 0; rta_num < parsed_response->header.ans_count; rta_num++) {
             //Consumo hasta encontrar un 0x00 al igual que antes
             idx = 0;
@@ -114,31 +104,19 @@ dns_response * parse_answer(unsigned char * response, size_t bytes, address_reso
             ttl = ntohl(ttl);
             idx += 4; //Consumo 4 bytes del ttl
             unsigned short data_length = ntohs(*((short *) (response + idx)));
-            idx += 2; // Consumo 2 bytes del data_length
-
-            /*char * puntero_a_ip;*/
-            //struct sockaddr_storage storage;
+            idx += 2; // Consumo 2 bytes del data_length 
 
             if (qtype == A_QTYPE) {
-               // storage.ss_family = AF_INET;
-               printf(" es ipv4\n");
+    
                struct sockaddr_in ipv4;
                memset(&ipv4, 0, sizeof(struct sockaddr_in));
                ipv4.sin_family = AF_INET;
                uint32_t aux = 0;
                memcpy(&aux, response + idx, sizeof(uint32_t));
-
-                printf("%p",resolve_info->storage);
-
-
                 ipv4.sin_addr.s_addr = aux;
                 memcpy(&resolve_info->storage[resolve_info->qty], (struct  sockaddr_storage *) &ipv4,sizeof(ipv4));
-
                 (resolve_info->qty)++;
-
-
             } else if (qtype == AAAA_QTYPE){
-                printf(" es ipv6\n");
                 struct sockaddr_in6 ipv6;
                 memset(&ipv6,0,sizeof(struct sockaddr_in6));
                 ipv6.sin6_family = AF_INET6;
@@ -212,73 +190,3 @@ void generate_query(char * fqdn, unsigned char * result, int * dns_query_size, e
     *dns_query_size = len + HEADER_BYTES;
 
 }
-
-
-/*
-
-int main() {
-
-  /*  unsigned char response[] = {  0x00, 0x00, 0x80, 0x81, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x77, 0x03, 0x77, 0x77,
-                        0x67, 0x06, 0x6f, 0x6f, 0x6c, 0x67, 0x03, 0x65, 0x6f, 0x63, 0x00, 0x6d, 0x01, 0x00, 0x01, 0x00,
-                        0x0c, 0xc0, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x22, 0x00, 0x04, 0x00, 0x3a, 0xd8, 0x24, 0xde};
-
-
-    invertir(response, 48); // Asi vendría la rta
-
-
-    */
-    /*unsigned char response[] = {
-            0x01, 0xc7, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01,
-            0x00, 0x00, 0x00, 0x01, 0x06, 0x67, 0x6f, 0x6f,
-            0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f, 0x6d, 0x00,
-            0x00, 0x1c, 0x00, 0x01, 0xc0, 0x0c, 0x00, 0x1c,
-            0x00, 0x01, 0x00, 0x00, 0x00, 0x67, 0x00, 0x10,
-            0x28, 0x00, 0x03, 0xf0, 0x40, 0x02, 0x08, 0x0a,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x0e,
-            0x00, 0x00, 0x29, 0x10, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00 };
-
-            */
-
-/*
-    unsigned char response[] = {
-            0x70, 0x0d, 0x81, 0x80, 0x00, 0x01, 0x00, 0x03,
-            0x00, 0x00, 0x00, 0x01, 0x06, 0x61, 0x6d, 0x61,
-            0x7a, 0x6f, 0x6e, 0x03, 0x63, 0x6f, 0x6d, 0x00,
-            0x00, 0x01, 0x00, 0x01, 0xc0, 0x0c, 0x00, 0x01,
-            0x00, 0x01, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x04,
-            0xcd, 0xfb, 0xf2, 0x67, 0xc0, 0x0c, 0x00, 0x01,
-            0x00, 0x01, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x04,
-            0x36, 0xef, 0x1c, 0x55, 0xc0, 0x0c, 0x00, 0x01,
-            0x00, 0x01, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x04,
-            0xb0, 0x20, 0x67, 0xcd, 0x00, 0x00, 0x29, 0x02,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-
-            */
-
-
-
-
-
-    //    parse_answer(response, 87, storage);
-
-
-    //dns_response * parsed_response = parse_answer(response, 48);
-
-    /*for(int i = 0; i < 48; i++)
-        putchar(response[i]);*/
-    /*char * buff = malloc(500);
-    size_t size = 0;
-    int sizee = 0;
-    generate_query("www.google.com", buff, &sizee);
-    for(int i = 0; i < sizee; i++)
-        putchar(buff[i]);*/
-    //printf("%s\n", base64url_encode(buff, size, &size));
-
-
-  //  return 0;
-//}
-
-
-
-

@@ -24,7 +24,7 @@ void stdout_write(struct selector_key * key){
 	uint8_t *write_ptr = buffer_read_ptr(wb,&rBytes);
 	ssize_t numBytesWritten = write(1, write_ptr, rBytes);
 	if(numBytesWritten > 0){
-		if(numBytesWritten < rBytes){
+		if((unsigned)numBytesWritten < rBytes){
 			buffer_read_adv(wb,numBytesWritten);
 		}
 		else{

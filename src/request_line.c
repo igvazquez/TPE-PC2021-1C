@@ -489,10 +489,6 @@ const struct parser_definition * request_line_parser_definition(void){
     return &definition;
 }
 
-
-
-
-
 void request_line_parser_init(struct request_line_parser *parser)
 {
    assert(parser != NULL);
@@ -507,8 +503,6 @@ void request_line_parser_init(struct request_line_parser *parser)
    parser->parsed_info.host_counter = 0;
    parser->parsed_info.origin_form_counter = 0;
    parser->parsed_info.host_type = domain_or_ipv4_addr; // DEFAULT
-
- 
 }
 
 
@@ -522,44 +516,38 @@ static error_status_code process_event(const struct parser_event * e,request_lin
     switch (e->type)
     {
     case RL_METHOD:
-        printf("METHOD: %c\n", e->data[0]);
         if(parsed_info->method_counter > MAX_METHOD_LENGTH)
             return BAD_REQUEST;
         parsed_info->method_buffer[(parsed_info->method_counter)++] = toupper(e->data[0]);
         break;
     case RL_METHOD_END:
-       printf("METHOD END: %c\n", e->data[0]);
         parsed_info->method_buffer[parsed_info->method_counter] = '\0';
         if(stricmp(parsed_info->method_buffer,"CONNECT") == 0){
             set_authority_form(parser->rl_parser);
         }
         break;
     case RL_HOST:
-       printf("HOST: %c\n", e->data[0]);
-            if(parsed_info->host_counter > MAX_FQDN_LENGTH)
+           if(parsed_info->host_counter > MAX_FQDN_LENGTH)
                 return URI_TOO_LONG;
             parsed_info->host.domain_or_ipv4_buffer[(parsed_info->host_counter)++] = e->data[0];
         break;
     case RL_HOST_END:
-       printf("HOST END: %c\n", e->data[0]);
         if(parsed_info->host_type == domain_or_ipv4_addr){
             if(parsed_info->host_counter > MAX_FQDN_LENGTH)
-                return URI_TOO_LONG;
+                return BAD_REQUEST;
             parsed_info->host.domain_or_ipv4_buffer[parsed_info->host_counter] = '\0';
 
         }else{
             if(parsed_info->host_counter > MAX_IPV6_LENGTH)
-                return URI_TOO_LONG;
+                return BAD_REQUEST;
             parsed_info->host.ipv6_buffer[parsed_info->host_counter] = '\0';
         }
         break;
     case RL_PORT:
-       printf("PORT: %c\n", e->data[0]);
         parsed_info->port *= 10;
         parsed_info->port += (e->data[0] - '0');
         break;
     case RL_IPV6_0:
-   
         parsed_info->host_type = ipv6_addr;
         break;
     case RL_IPV6:
@@ -568,30 +556,24 @@ static error_status_code process_event(const struct parser_event * e,request_lin
         parsed_info->host.ipv6_buffer[(parsed_info->host_counter)++] = e->data[0];
         break;
     case RL_ORIGIN_FORM:
-       printf("ORIGIN: %c\n", e->data[0]);
         if(parsed_info->origin_form_counter > MAX_ORIGIN_FORM)
             return URI_TOO_LONG;
         parsed_info->origin_form_buffer[(parsed_info->origin_form_counter)++] = e->data[0];
         break;
     case RL_ORIGIN_FORM_END:
-       printf("ORIGIN END: %c\n", e->data[0]);
         if(parsed_info->origin_form_counter > MAX_ORIGIN_FORM)
             return URI_TOO_LONG;
 
         parsed_info->origin_form_buffer[parsed_info->origin_form_counter] =  '\0';
         break;
     case RL_HTTP_VERSION_MAJOR:
-       printf("MAJOR: %c\n", e->data[0]);
         parsed_info->version_major = e->data[0] - '0';
         break;
     case RL_HTTP_VERSION_MINOR:
-       printf("MINOR: %c\n", e->data[0]);
         parsed_info->version_minor = e->data[0] - '0';  
         break;
     case RL_DONE:
-       printf("DONE: %c\n", e->data[0]);
         if(parsed_info->origin_form_counter == 0 && stricmp(parsed_info->method_buffer,"CONNECT") != 0){
-         
             parsed_info->origin_form_buffer[parsed_info->origin_form_counter++] =  '/';
             parsed_info->origin_form_buffer[parsed_info->origin_form_counter] =  '\0';
         }
@@ -607,7 +589,6 @@ static error_status_code process_event(const struct parser_event * e,request_lin
 
 
 static void fill_request_line_data(struct request_line_parser * parser, error_status_code *status){
-    printf("\nfill request line data\n");
     struct request_line *rl = parser->request_line;
     struct parsed_info pi = parser->parsed_info;
     int i6pton_ret, i4pton_ret;
@@ -619,9 +600,7 @@ static void fill_request_line_data(struct request_line_parser * parser, error_st
                 rl->request_target.host_type = ipv6_addr_t;
             }else if(i6pton_ret <= 0){
                 // la ipv6 no es correcta o inet_pton falló
-                //TODO: probablemente el bool * error en todas estas funciones deba cambiar por una enum para luego devolver una respuesta de error custom
                 *status = BAD_REQUEST;
-                printf("Not ipv6\n");
                 goto finally;
             }
             break;
@@ -633,14 +612,14 @@ static void fill_request_line_data(struct request_line_parser * parser, error_st
                 rl->request_target.host_type = ipv4_addr_t;
             }else if(i4pton_ret == 0){
         
-                // la ipv6 no es correcta => considero que es un domain name
+                // la ipv4 no es correcta => considero que es un domain name
                  rl->request_target.host_type = domain_addr_t;
                  memcpy(rl->request_target.host.domain, pi.host.domain_or_ipv4_buffer, pi.host_counter+1);
                  //TODO: probablemente el bool * error en todas estas funciones deba cambiar por una enum para luego devolver una respuesta de error custom
               
             }else{
                 // inet_pton falló
-                 *status = BAD_REQUEST;
+                 *status = INTERNAL_SERVER_ERROR;
                  goto finally;
             }
             break;
@@ -653,24 +632,24 @@ static void fill_request_line_data(struct request_line_parser * parser, error_st
     memcpy(rl->request_target.origin_form, pi.origin_form_buffer, pi.origin_form_counter+1);
 
     if(pi.port != 0){
-       
+        
         rl->request_target.port = htons(pi.port);
     }else{
-       
+        
         rl->request_target.port = htons(DEFAULT_HTTP_PORT);
     }
 
-    
+
     uint8_t version_major = pi.version_major;
     if(pi.version_major == 1){
-         rl->version_major = version_major;
+            rl->version_major = version_major;
     }else{
         *status = HTTP_VERSION_NOT_SUPPORTED;
         goto finally;
     }
     uint8_t version_minor = pi.version_minor;
     if(version_minor <= 1){
-         rl->version_minor = version_minor;
+            rl->version_minor = version_minor;
     }else{
         *status = HTTP_VERSION_NOT_SUPPORTED;
         goto finally;
@@ -693,7 +672,6 @@ bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, er
     while (buffer_can_read(buffer))
     {
         c = buffer_read(buffer);
-        printf("parsing: %c\n", c);
         e = parser_feed(parser->rl_parser, c);
      
         do{
@@ -702,8 +680,7 @@ bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, er
                 return true;
             }
             if (request_line_is_done(e->type, status))
-            {
-                printf("request message done - error: %d\n", *status);
+            {           
                 if(*status == OK){
                     fill_request_line_data(parser, status);
                 }

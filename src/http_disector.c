@@ -12,12 +12,11 @@
 
 void http_disector_reset(struct http_disector *disector);
 
-void decode_credentials(struct request_message_parser * parser,struct  log_data*log_data){
+void decode_credentials(struct request_message_parser * parser,struct  log_data*log_data,error_status_code * status){
     assert(parser != NULL && parser->current_detection != NULL);
     char *value = get_detection_value(parser);
     char *auth_type = strtok(value, " ");
 
-  
     // Podria extenderse a desencodear otros tipos de Authorization
     if(strcmp(auth_type,"Basic") == 0){
           char *encode = strtok(NULL," ");
@@ -28,7 +27,8 @@ void decode_credentials(struct request_message_parser * parser,struct  log_data*
           log_data->password = strtok(NULL,":");
           log_data->protocol = HTTP;
           register_password(log_data);
-    }   
+    }
+    *status = OK;
 }
 
 void http_disector_init(struct http_disector *disector,struct log_data* log_data){
@@ -37,6 +37,7 @@ void http_disector_init(struct http_disector *disector,struct log_data* log_data
     disector->log_data = log_data;
     request_message_parser_init(&disector->rm_parser,1,false);
     add_header(&disector->rm_parser,"Authorization",HEADER_STORAGE,NULL,decode_credentials);
+  
     http_disector_reset(disector);
 }
 
@@ -49,7 +50,7 @@ void http_disector_reset(struct http_disector* disector){
 void http_disector_feed(struct http_disector *disector, uint8_t c){
 
    const  struct parser_event *e;
-   bool error = false;
+   error_status_code status = OK;
    bool done = false;
   
    switch (disector->state)
@@ -72,8 +73,8 @@ void http_disector_feed(struct http_disector *disector, uint8_t c){
    case HTTP_HEADERS:
  
        e = parser_feed(disector->rm_parser.rm_parser, c);
-       done = request_message_parser_process(e, &disector->rm_parser, &error,disector->log_data);
-       if(done|| error){
+       done = request_message_parser_process(e, &disector->rm_parser,disector->log_data,&status);
+       if(done|| status != OK){
            http_disector_reset(disector);
        }
        break;
@@ -83,7 +84,7 @@ void http_disector_feed(struct http_disector *disector, uint8_t c){
 void http_disector_consume(struct http_disector *disector, buffer *b){
     size_t nBytes;
     uint8_t* readPtr = buffer_read_ptr(b,&nBytes);
-    uint8_t c;
+
     for (unsigned i = 0; i < nBytes;i++){
         http_disector_feed(disector,readPtr[i]);
     }

@@ -64,12 +64,10 @@ char* get_origin_string(union host_addr origin_addr,enum addr_type type,in_port_
             strncpy(address, "unknown ip", INET6_ADDRSTRLEN);
             address[INET6_ADDRSTRLEN - 1] = 0;
         }
-        printf("ipv6 origin addres: %s\n", address);
 
         if(-1 == sprintf(address,"[%s]:%d",ipv6,ntohs(origin_port))){
             abort();
         }
-        printf("despues del sprintf: %s\n", address);
         break;
     case domain_addr_t:
   
@@ -115,7 +113,7 @@ static void log_register(struct log_data *log_data, char reg_type) {
     char *format = NULL;
     size_t wBytes;
     struct stdout_writer* writer_data = get_stdout_writer_data();
-    char buffer[100];
+    char buffer[2024];
     uint8_t * write_ptr = buffer_write_ptr(&writer_data->wb,&wBytes);
     int n = 0;
     if(reg_type == 'A'){
@@ -125,7 +123,7 @@ static void log_register(struct log_data *log_data, char reg_type) {
             set_address_string(*log_data->client_addr, client_address_str ,client_addr_length);
             char* format = "%s\tA\t%s\t%d\t%s\thttp://%s%s\t%s\n";
             char *origin_form = log_data->origin_form;
-            n = snprintf(buffer,100,format, log_data->date,client_address_str, ntohs(get_address_port(*log_data->client_addr)), log_data->method, get_origin_string(log_data->origin_addr,log_data->origin_addr_type,log_data->origin_port),origin_form, log_data->status_code);
+            n = snprintf(buffer,2024,format, log_data->date,client_address_str, ntohs(get_address_port(*log_data->client_addr)), log_data->method, get_origin_string(log_data->origin_addr,log_data->origin_addr_type,log_data->origin_port),origin_form, log_data->status_code);
             
     }else if(reg_type == 'P'){
         char *origin_addr = get_origin_string(log_data->origin_addr, log_data->origin_addr_type, log_data->origin_port);

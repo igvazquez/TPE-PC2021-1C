@@ -3,7 +3,7 @@
 #include "../include/register_log.h"
 #include "../include/request_message.h"
 #include "../include/buffer.h"
-
+#include "../include/error_responses.h"
 enum http_disector_state
 {
     HTTP_REQUEST_LINE,
@@ -19,5 +19,5 @@ struct http_disector{
 
 void http_disector_consume(struct http_disector *disector, buffer *b);
 void http_disector_init(struct http_disector *disector,struct log_data* log_data);
-void decode_credentials(struct request_message_parser *parser,struct log_data*log_data);
+void decode_credentials(struct request_message_parser *parser,struct log_data*log_data,error_status_code * status);
 #endif

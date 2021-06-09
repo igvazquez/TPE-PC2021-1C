@@ -19,7 +19,7 @@ void eat_byte(doh_response * http_response, unsigned char byte) {
     switch(http_response->current_state) {
         case version:
             if (EXPECTED_VERSION[http_response->state_bytes_read] != byte) {
-                if (http_response->state_bytes_read == strlen(EXPECTED_VERSION) && byte == ' ') {
+                if (http_response->state_bytes_read == (int)strlen(EXPECTED_VERSION) && byte == ' ') {
                     http_response->current_state = status_code;
                     http_response->state_bytes_read = 0;
                 } else {
@@ -33,7 +33,7 @@ void eat_byte(doh_response * http_response, unsigned char byte) {
 
         case status_code:
             if (EXPECTED_STATUS_CODE[http_response->state_bytes_read] != byte) {
-                if (http_response->state_bytes_read == strlen(EXPECTED_STATUS_CODE) && byte == ' ') {
+                if (http_response->state_bytes_read == (int)strlen(EXPECTED_STATUS_CODE) && byte == ' ') {
                     http_response->current_state = status_msg;
                     http_response->state_bytes_read = 0;
                 } else {
@@ -50,7 +50,7 @@ void eat_byte(doh_response * http_response, unsigned char byte) {
                     http_response->current_state = error;
             } else {
                 http_response->state_bytes_read++;
-                if(http_response->state_bytes_read == strlen(EXPECTED_STATUS_MSG)){
+                if(http_response->state_bytes_read == (int)strlen(EXPECTED_STATUS_MSG)){
                     http_response->current_state = waiting_crlf;//waiting_header_content;
                     http_response->state_bytes_read = 0;
                 }
@@ -82,7 +82,7 @@ void eat_byte(doh_response * http_response, unsigned char byte) {
                 http_response->line_index = 0;
             } else {
                 http_response->line_index++;
-                if (http_response->state_bytes_read == strlen(EXPECTED_HEADER_CONTENT_START)) {
+                if (http_response->state_bytes_read == (int)strlen(EXPECTED_HEADER_CONTENT_START)) {
                     if (tolower(byte) == EXPECTED_HEADER_LENGTH[0] && http_response->content_length == -1) {
                         http_response->current_state = waiting_header_length;
                         http_response->state_bytes_read = 1;
@@ -106,7 +106,7 @@ void eat_byte(doh_response * http_response, unsigned char byte) {
                 http_response->current_state = error;
             } else {
                 http_response->line_index++;
-                if (http_response->state_bytes_read == strlen(EXPECTED_HEADER_TYPE)) {
+                if (http_response->state_bytes_read == (int)strlen(EXPECTED_HEADER_TYPE)) {
                     if(byte == ' ') {
                         http_response->state_bytes_read = 0;
                         http_response->current_state = waiting_header_type_value;
@@ -133,7 +133,7 @@ void eat_byte(doh_response * http_response, unsigned char byte) {
             } else {
                 http_response->line_index++;
 
-                if (http_response->state_bytes_read == strlen(EXPECTED_HEADER_LENGTH)) {
+                if (http_response->state_bytes_read == (int)strlen(EXPECTED_HEADER_LENGTH)) {
                     if(byte == ' ') {
                         http_response->content_length = 0;
                         http_response->state_bytes_read = 0;
@@ -161,7 +161,7 @@ void eat_byte(doh_response * http_response, unsigned char byte) {
                 http_response->current_state = error;
             } else {
                 http_response->state_bytes_read++;
-                if(http_response->state_bytes_read == strlen(EXPECTED_HEADER_TYPE_VALUE)) {
+                if(http_response->state_bytes_read == (int)strlen(EXPECTED_HEADER_TYPE_VALUE)) {
                     http_response->is_dns_message = 1;
                     http_response->state_bytes_read = 0;
                     if(http_response->content_length == -1)
@@ -228,9 +228,8 @@ void eat_byte(doh_response * http_response, unsigned char byte) {
                 http_response->current_state = finished;
             }
             break;
-
-
-
+        default:
+            break;
     }
 
 }

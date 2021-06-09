@@ -11,6 +11,7 @@
 #include "../include/register_log.h"
 #include "../include/args.h"
 #include "../include/doh_client.h"
+#include <limits.h>
 #include <sys/socket.h>
 #include <stdio.h>
 #include <stdlib.h>  // malloc
@@ -166,8 +167,8 @@ struct copy_st{
  */
 struct httpd {
     /* buffers de write y read */
-    uint8_t from_client_buffer_data[MAX_BUFF_SIZE],from_origin_buffer_data[MAX_BUFF_SIZE];
-    buffer from_client_buffer,from_origin_buffer;
+    uint8_t client_read_data[MAX_BUFF_SIZE],client_write_data[MAX_BUFF_SIZE];
+    buffer client_read,client_write;
 
     /* maquinas de estados */
     struct state_machine stm;
@@ -179,7 +180,6 @@ struct httpd {
     /* estados para el client_fd */
     union {
         struct request_line_st request_line;
-        struct response_line_st response_line;
         struct request_message_st request_message;
         struct copy_st copy;
     } client;
@@ -195,6 +195,7 @@ struct httpd {
     /* estados para el origin_fd */
     union {
         struct connecting_st connecting;
+        struct response_line_st response_line;
         struct request_message_st request_message;
         struct copy_st copy;
     } origin;
@@ -291,12 +292,7 @@ httpd_read(struct selector_key *key) {
     const enum httpd_state st = stm_handler_read(stm, key);
 
     if(DONE == st) {
-        if(ATTACHMENT(key)->origin_fd != -1){
-               printf("METHOD: %s\n", ATTACHMENT(key)->log_data.method);
-                if(ATTACHMENT(key)->log_data.client_addr->ss_family == AF_INET){
-                    printf(" read CLIENT ES IPV4\n");
-                }
-               
+        if(ATTACHMENT(key)->origin_fd != -1){               
              register_access(&ATTACHMENT(key)->log_data);
         }
         httpd_done(key);
@@ -305,18 +301,10 @@ httpd_read(struct selector_key *key) {
 
 static void
 httpd_write(struct selector_key *key) {
-    printf("handler write\n");
     struct state_machine *stm   = &(ATTACHMENT(key)->stm);
-
     const enum httpd_state st = stm_handler_write(stm, key);
-
     if(DONE == st) {
         if(ATTACHMENT(key)->origin_fd != -1){
-            printf("METHOD: %s\n", ATTACHMENT(key)->log_data.method);
-
-                if(ATTACHMENT(key)->log_data.client_addr->ss_family == AF_INET){
-                    printf(" write CLIENT ES IPV4\n");
-                }
              register_access(&ATTACHMENT(key)->log_data);
         }
        
@@ -331,8 +319,6 @@ httpd_block(struct selector_key *key) {
 
     if(DONE == st) {
         if(ATTACHMENT(key)->origin_fd != -1){
-
-
              register_access(&ATTACHMENT(key)->log_data);
         }
         httpd_done(key);
@@ -377,8 +363,8 @@ static struct httpd *httpd_new(int client_fd){
     ret->client_fd = client_fd;
     ret->origin_fd = -1;
 
-    buffer_init(&ret->from_client_buffer, N(ret->from_client_buffer_data), ret->from_client_buffer_data);
-    buffer_init(&ret->from_origin_buffer, N(ret->from_origin_buffer_data), ret->from_origin_buffer_data);
+    buffer_init(&ret->client_read, N(ret->client_read_data), ret->client_read_data);
+    buffer_init(&ret->client_write, N(ret->client_write_data), ret->client_write_data);
 
     http_disector_init(&ret->http_disector,&ret->log_data);
     pop3_disector_init(&ret->pop3_disector,&ret->log_data);
@@ -396,10 +382,8 @@ void
 httpd_passive_accept(struct selector_key *key) {
     struct sockaddr_storage       client_addr;
     socklen_t                     client_addr_len = sizeof(client_addr);
-    struct httpd                *state           = NULL;
-    printf("Aceptando conexión en socket %d\n",key->fd);
+    struct httpd *state = NULL;
     const int client = accept(key->fd, (struct sockaddr*) &client_addr, &client_addr_len);
-    // printf("1 direccion s: %p\n", key->s);
     if(client == -1) {
         goto fail;
     }
@@ -428,7 +412,6 @@ httpd_passive_accept(struct selector_key *key) {
     return;
 
 fail:
-    printf("fail:\n");
     if(client != -1) {
         close(client);
     }
@@ -442,19 +425,18 @@ fail:
 ////////////////////////////////////////////////////////////////////////////////
 
 static void request_line_read_init(const unsigned state,struct selector_key *key){
-    printf("request line read init\n");
     assert(state == REQUEST_LINE_READ);
     struct httpd *data = ATTACHMENT(key);
     struct request_line_st* rl = &(data->client.request_line);
     request_line_parser_init(&(rl->parser));
     rl->parser.request_line = &(data->client.request_line.request_line_data);
-    rl->rb = &(data->from_origin_buffer);
+    rl->rb = &(data->client_read);
 }
 
 static unsigned request_line_process(struct request_line_st *rl, struct selector_key *key);
 static unsigned request_line_read(struct selector_key *key)
 {
-    
+
     struct httpd *data = ATTACHMENT(key);
     struct request_line_st* rl = &data->client.request_line;
 
@@ -473,9 +455,6 @@ static unsigned request_line_read(struct selector_key *key)
             if(data->status != OK){
                 ret = ERROR;
             }else{
-                printf("termine de parsear sin error\n");
-                printf("metodo: %s\n", rl->request_line_data.method);
-
                 switch(rl->request_line_data.request_target.host_type){
                     case ipv6_addr_t:
                         printf("ipv6 origen: %s\n", rl->parser.parsed_info.host.ipv6_buffer);
@@ -520,7 +499,7 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
    
 
     struct httpd *data = ATTACHMENT(key);
-    struct sockaddr_storage*origin_addr = &data->origin_addr;
+
     switch (rl->request_line_data.request_target.host_type)
     {
     case ipv6_addr_t:
@@ -547,13 +526,9 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
         break;
 
     case domain_addr_t:
-
-        printf("es domain_addr_t\n");
-
         if (resolve(rl->request_line_data.request_target.host.domain, key->s, data->client_fd, &rl->resolve_info) != RESOLVE_ERROR)
         {
             ret = REQUEST_RESOLVE;
-
             memcpy(data->log_data.origin_addr.domain, rl->request_line_data.request_target.host.domain ,strlen((char*)rl->request_line_data.request_target.host.domain)+1);
             data->log_data.origin_addr_type = domain_addr_t;
 
@@ -571,8 +546,6 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
 
         break;
     }
-   //   printf("1 origin form: %s: %d\n",(char*) data->client.request_line.request_line_data.request_target.origin_form, strlen((char *)rl->request_line_data.request_target.origin_form));
- // printf("2 origin form: %s: %d\n",(char*) rl->request_line_data.request_target.origin_form, strlen((char *)rl->request_line_data.request_target.origin_form));
     strcpy(data->log_data.origin_form,(char*) rl->request_line_data.request_target.origin_form);
     strcpy(data->log_data.method, (char*)rl->request_line_data.method);
     data->log_data.origin_port = rl->request_line_data.request_target.port;
@@ -584,7 +557,6 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
 // REQUEST RESOLVE
 ////////////////////////////////////////////////////////////////////////////////
 static unsigned request_resolve_done(struct selector_key * key){
-    printf("request resolve done\n");
     struct httpd *data = ATTACHMENT(key);
 
     struct request_line_st * rl = &data->client.request_line;
@@ -594,35 +566,30 @@ static unsigned request_resolve_done(struct selector_key * key){
         return ERROR;
     }
     if(rl->resolve_info.qty == 0){
-        printf("tengo 0 ips \n");
+ 
         if(rl->resolve_info.type == IPV4){
-            printf("CAMBIO A IPV6");
             rl->resolve_info.type = IPV6;
+          
             return request_line_process(rl,key);
         }else{
             data->status = BAD_GATEWAY;
             return ERROR;
         }
     }else{
+     
         struct sockaddr_storage storage  = rl->resolve_info.storage[rl->resolve_info.qty -1];
         if(rl->resolve_info.type == IPV4){
-            printf("resolve done es ipv4\n");
             struct sockaddr_in  * sin = (struct sockaddr_in * ) &storage;
             sin->sin_port = rl->request_line_data.request_target.port;
 
         }else{
-            printf("resolve done es ipv6\n");
             struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) &storage;
             sin6->sin6_port = rl->request_line_data.request_target.port;
 
         }
-        rl->resolve_info.qty--;
         data->origin_addr_len = sizeof(storage);
         memcpy(&data->origin_addr,&storage,data->origin_addr_len);
         rl->resolve_info.qty--;
-        char buff[50];
-        sockaddr_to_human(buff, 50, (const struct sockaddr *)&storage);
-        printf("storage done = %s\n", buff);
         return connect_to_origin(storage.ss_family,key);
     }
 
@@ -634,17 +601,12 @@ static unsigned request_resolve_done(struct selector_key * key){
 ////////////////////////////////////////////////////////////////////////////////
 
 static unsigned connect_to_origin(int origin_family,struct selector_key*key){
+ 
     struct httpd *data = ATTACHMENT(key);
-  //  char buff2[30];
-
-  //  sockaddr_to_human(buff2, 50, (const struct sockaddr*)&data->origin_addr);
-    //printf("%s\n", buff2);
-
-    bool retry_connect = false;
     int origin_fd = data->origin_fd;
 
     if(origin_fd != -1){
-        retry_connect = true;
+        // ya probe antes con otra ip
         close(origin_fd);
         selector_unregister_fd(key->s,origin_fd);
     }
@@ -672,44 +634,39 @@ static unsigned connect_to_origin(int origin_family,struct selector_key*key){
     
 
             selector_status ss = selector_register(key->s, origin_fd, &httpd_handler, OP_WRITE, data);
-            printf("termino de registrar\n");
+          
             if(ss != SELECTOR_SUCCESS){
-                printf("fail register origin_fd to OP_WRITE\n");
                 data->status = INTERNAL_SERVER_ERROR;
                 goto finally;
             }
         }else{
-            // falló conexión
-            printf("Connect to origin error\n");
-            // TODO: mandar mensaje al usuario supongo (al devolver ERROR, CREO que todos los recursos se liberan en httpd_done)
+            // falló conexión    
             data->status = errno_response(errno);
             goto finally;
          }
-    }else{
-        printf("Connect to origin devuelve otra cosa: %d\n");
     }
 finally:
-    printf("termina connect to origin: %d\n",ret);
     return data->status != OK ? ERROR : ret;
 }
 
 static void connecting_init(const unsigned state,struct selector_key *key){
     assert(state == CONNECTING);
-    printf("connecting init\n");
     struct connecting_st * connecting = &(ATTACHMENT(key)->origin.connecting);
-
     connecting->client_fd = ATTACHMENT(key)->client_fd;
     connecting->origin_fd = ATTACHMENT(key)->origin_fd;
 }
 
+static bool is_connect(char* method){
+    return stricmp("CONNECT", method) == 0;
+}
 
+static enum httpd_state get_next_state(struct selector_key* key,char * method){
+    if(is_connect(method)){
+        strcpy((char*)ATTACHMENT(key)->origin.response_line.response_line_data.status_code, "200");
+        strcpy((char*)ATTACHMENT(key)->origin.response_line.response_line_data.status_message, "OK");
 
-static enum httpd_state get_next_state(char * method){
-    if(stricmp(method,"CONNECT") == 0){
-        
-        return COPY;
+        return RESPONSE_LINE_WRITE;
     }else{
-        printf("request line write go\n");
         return REQUEST_LINE_WRITE;
     }
 }
@@ -728,11 +685,7 @@ static unsigned connecting_done(struct selector_key *key){
     if(getsockopt(connecting->origin_fd,SOL_SOCKET,SO_ERROR,&socket_error,&socket_error_len) == 0){
         if(socket_error == 0){
             // se conectó bien
-            printf("Me conecte bien a fd %d\n", connecting->origin_fd);
-            if(stricmp(data->log_data.method,"CONNECT") == 0){
-                strcpy(data->log_data.status_code,"200");
-            }
-        
+
             // quiero leer del cliente
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->client_fd, OP_NOOP))
             {
@@ -745,34 +698,23 @@ static unsigned connecting_done(struct selector_key *key){
                 goto finally;
             }
 
-            ret = get_next_state((char * )ATTACHMENT(key)->client.request_line.request_line_data.method);
+            ret = get_next_state(key,(char * )ATTACHMENT(key)->client.request_line.request_line_data.method);
             goto finally;
         }else{
-
-
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->client_fd, OP_NOOP)){
-
-
                 data->status = INTERNAL_SERVER_ERROR;
                 goto finally;
-
             }
-
-
-            printf("2.socket_error == %d\n",socket_error);
+      
             // hubo error en la conexión
-            // TODO a futuro supongo que habrá un estado para reintentar conexión o devolver mensaje al usuario
             data->status = errno_response(errno);
-
             strcpy(data->log_data.status_code, error_responses[data->status].status);
-            register_access(&data->log_data);
+            //register_access(&data->log_data); //TODO preguntar si logear conexiones fallidas
             ret = REQUEST_RESOLVE;
             goto finally;
 
         }
     }else{
-        
-        printf("getsockopt != 0\n");
         data->status = INTERNAL_SERVER_ERROR;
         goto finally;
     }
@@ -798,8 +740,6 @@ static void request_line_write_init(const unsigned state,struct selector_key *ke
     rl->data.data_to_send_len = method_len + origin_form_len + 12;
     rl->data.data_to_send = (uint8_t*)malloc( rl->data.data_to_send_len);
  
-
-
     if(-1 == sprintf((char*)rl->data.data_to_send,"%s %s HTTP/%d.%d\r\n",(char*)rl->request_line_data.method,(char*)rl->request_line_data.request_target.origin_form,VERSION_MAJOR,VERSION_MINOR)){
         abort();
     }
@@ -807,7 +747,6 @@ static void request_line_write_init(const unsigned state,struct selector_key *ke
     buffer *b = &rl->data.data_to_send_buffer;
     buffer_init(b, rl->data.data_to_send_len,rl->data.data_to_send);
     buffer_write_adv(b,rl->data.data_to_send_len);
-    //read_request_line(rl, key->s, data->origin_fd);
     if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_WRITE))
     {
         abort();
@@ -815,6 +754,7 @@ static void request_line_write_init(const unsigned state,struct selector_key *ke
 }
 
 static void request_line_write_on_departure(const unsigned state,struct selector_key *key){
+    assert(state == REQUEST_LINE_WRITE);
     struct httpd *data = ATTACHMENT(key);
     struct request_line_st* rl = &(data->client.request_line);
     free(rl->data.data_to_send);
@@ -823,26 +763,22 @@ static void request_line_write_on_departure(const unsigned state,struct selector
 
 static bool send_buffer(int read_fd,int write_fd, buffer *b,fd_selector s, struct data_to_send* data,bool *error){
     size_t rbytes;
-    /* quiero leer en el write buffer de copy */
     uint8_t *write_buffer_ptr = buffer_read_ptr(b, &rbytes);
-
     ssize_t numBytesWritten = send(write_fd, write_buffer_ptr, rbytes,MSG_NOSIGNAL);
-  
     bool done = false;
-
     if(numBytesWritten < 0){
         *error = true;
-         abort();
+        return false;
     }
     else if (numBytesWritten == 0)
     {
-    
-        abort();
+        *error = true;
+        return true;
     }
     else
     {
         // se escribió algo
-        size_t written = numBytesWritten < rbytes ? numBytesWritten : rbytes;
+        size_t written = (unsigned)numBytesWritten < rbytes ? numBytesWritten : rbytes;
 
         buffer_read_adv(b, written);
         print_buffer(b);
@@ -894,10 +830,13 @@ static unsigned request_line_write(struct selector_key *key){
         if(done){
             ret = REQUEST_MESSAGE;
         }
+    }else if(done){
+        ret = DONE;
+    }else{
+        ret = ERROR;
     }
 
-finally :
-    return error ? ERROR : ret;
+    return ret;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -906,23 +845,26 @@ finally :
 
 
 
-static void content_length_on_value_end(struct request_message_parser* parser,struct  log_data*log_data){
+static void content_length_on_value_end(struct request_message_parser* parser,struct  log_data*log_data,error_status_code * status){
     assert(parser != NULL && parser->current_detection != NULL);
-    set_content_length(parser,atoi(get_detection_value(parser)));
-    printf("CONTENT LENGTH = %d\n", parser->content_lenght);
+    long content_length = strtol(get_detection_value(parser),NULL,10);
+    if ((errno == ERANGE && (content_length == LONG_MAX || content_length == LONG_MIN))
+        || (errno != 0 && content_length == 0)) {
+        *status = BAD_REQUEST;
+        return;
+    }
+    set_content_length(parser,content_length);
 }
 
 
 
 static void request_message_init(const unsigned state,struct selector_key *key){
-    printf("request message init\n");
+    assert(state == REQUEST_MESSAGE);
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
-    rm->rb = &data->from_origin_buffer;
+    rm->rb = &data->client_read;
     request_message_parser_init(&rm->parser,5,true); // <= cantidad de headers a tener en cuenta, podria mejorarse la interfaz para que no sea necesario pasarselo
-    int len = data->origin_addr.ss_family == AF_INET ? INET_ADDRSTRLEN + 2 + MAX_PORT_SIZE : INET6_ADDRSTRLEN + 2 + MAX_PORT_SIZE;
-    char *host_buffer = (char *)malloc(len);
-    
+       
     // El parser de header es case insensitive
     add_header(&rm->parser, "Host", HEADER_REPLACE,get_origin_string(data->log_data.origin_addr,data->log_data.origin_addr_type,data->log_data.origin_port), NULL);
     add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
@@ -944,35 +886,33 @@ static void request_message_init(const unsigned state,struct selector_key *key){
     }
 }
 
-static bool read_message(int read_fd,int write_fd,buffer* rb,fd_selector s,bool * error){
+static bool read_message(int read_fd,int write_fd,buffer* rb,fd_selector s, error_status_code * status){
     bool done = false;
     size_t wbytes;
     uint8_t *read_buffer_ptr = buffer_write_ptr(rb, &wbytes);
-    printf("wbytes = %ld\n", wbytes);
     ssize_t numBytesRead = recv(read_fd, read_buffer_ptr, wbytes,0);
-    printf("numBytesRead = %ld\n", numBytesRead);
     if (numBytesRead > 0)
     {
         buffer_write_adv(rb, numBytesRead);
         if(!buffer_can_write(rb)){
             if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
             {
-                *error = true;
+                *status = INTERNAL_SERVER_ERROR;
                 goto finally;
             }
         }
         if (SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_WRITE))
         {
-            *error = true;
+            *status = INTERNAL_SERVER_ERROR;
             goto finally;
         }
     }else if(numBytesRead <0){
-        *error = true;
+         *status = INTERNAL_SERVER_ERROR;
         goto finally;
     }else{
         if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
         {
-                *error = true;
+                 *status = INTERNAL_SERVER_ERROR;
                 goto finally;
         }
         done = true;
@@ -983,16 +923,15 @@ finally:
 }
 
 static unsigned request_message_read(struct selector_key* key){
-       //printf("request message READ\n");
+
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
     buffer * client_rb = rm->rb;
-    bool error = false;
+    data->status = OK;
     unsigned ret = REQUEST_MESSAGE;
-    bool done = read_message(data->client_fd, data->origin_fd, client_rb, key->s,&error);
-    if (error)
+    bool done = read_message(data->client_fd, data->origin_fd, client_rb, key->s,&data->status);
+    if (data->status != OK)
     {
-        data->status = INTERNAL_SERVER_ERROR;
         ret = ERROR;
     }else if(done){
         ret = DONE;
@@ -1001,26 +940,29 @@ static unsigned request_message_read(struct selector_key* key){
     return ret;
 }
 
-static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_parser *parser, fd_selector s, bool *error,struct log_data*log_data)
+static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_parser *parser, fd_selector s, struct log_data*log_data, error_status_code * status)
 {
 
     bool done = false;
-    done = request_message_parser_consume(parser,rb,error,log_data);
+    printf("send message\n");
+    done = request_message_parser_consume(parser,rb,log_data,status);
+    printf("send message parser consume volvi\n");
     if(done){
-        if(*error){
+        if(*status != OK){
             goto finally;
         }
     }
         
   
     if(parser->data_index > 0){
+           printf("send message send\n");
         ssize_t numBytesWritten = send(write_fd, parser->data, parser->data_index,MSG_NOSIGNAL);
         if(numBytesWritten <= 0){
     
-            *error = true;
+            *status = INTERNAL_SERVER_ERROR;
             goto finally;
         }
-        if(numBytesWritten < parser->data_index){
+        if((unsigned)numBytesWritten < parser->data_index){
             // si se envió menos de lo que parseé, debo escribir lo que parseé demás devuelta en el buffer
            
             for (unsigned i = numBytesWritten-1; i <  parser->data_index-1; i++){
@@ -1028,45 +970,46 @@ static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_
             }
             buffer_write_adv(rb, parser->data_index - numBytesWritten);
         }
+                 printf("termino send\n");
     }
     parser->data_index = 0;
     if(!done){
+         printf("send message no done\n");
         if(buffer_can_write(rb)){   
             if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_READ))
             {
-                *error = true;
+                *status = INTERNAL_SERVER_ERROR;
                 goto finally;
             }
         }
         if(!buffer_can_read(rb)){   
             if (SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP))
             {
-                *error = true;
+                 *status = INTERNAL_SERVER_ERROR;
                 goto finally;
             }
         }
     }else if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP) || SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP)){
-            *error = true;
+            *status = INTERNAL_SERVER_ERROR;
             goto finally;
     }
         
-           
+                 printf("send message end\n");   
 finally:
     return done;
 }
 
 static unsigned request_message_write(struct selector_key* key){
-      // printf("request message WRITE\n");
+
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
 
     buffer *client_rb = rm->rb;
-    bool error = false;
+    data->status = OK;
     unsigned ret = REQUEST_MESSAGE;
    
-    bool done = send_message(data->client_fd, data->origin_fd, client_rb, &rm->parser, key->s, &error,&data->log_data);
-    if(error){
-        data->status = INTERNAL_SERVER_ERROR;
+    bool done = send_message(data->client_fd, data->origin_fd, client_rb, &rm->parser, key->s,&data->log_data,&data->status);
+    if(data->status != OK){
         ret = ERROR;
     }else if(done){
         ret = RESPONSE_LINE_READ;
@@ -1079,15 +1022,15 @@ static unsigned request_message_write(struct selector_key* key){
 ////////////////////////////////////////////////////////////////////////////////
 
 static void response_line_read_init(const unsigned state,struct selector_key *key){
-    printf("response_line_init\n");
+   
     assert(state == RESPONSE_LINE_READ);
     struct httpd *data = ATTACHMENT(key);
-    struct response_line_st* rl = &(data->client.response_line);
+    struct response_line_st* rl = &(data->origin.response_line);
     response_line_parser_init(&(rl->parser));
-    rl->parser.response_line = &(data->client.response_line.response_line_data);
+    rl->parser.response_line = &(data->origin.response_line.response_line_data);
     rl->parser.response_line->code_counter = 0;
     rl->parser.response_line->message_counter = 0;
-    rl->rb = &(data->from_origin_buffer);
+    rl->rb = &(data->client_write);
 
     if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_READ))
     {
@@ -1097,17 +1040,18 @@ static void response_line_read_init(const unsigned state,struct selector_key *ke
 
 static unsigned response_line_read(struct selector_key *key)
 {
-    printf("response_line_read\n");
-    struct response_line_st* rl = &(ATTACHMENT(key)->client.response_line);
+   
+
+    struct response_line_st* rl = &(ATTACHMENT(key)->origin.response_line);
     struct httpd *data = ATTACHMENT(key);
 
     buffer *b = rl->rb;
     data->status = OK;
     size_t wbytes;
     uint8_t *read_buffer_ptr = buffer_write_ptr(b, &wbytes);
-    printf("wbytes = %ld\n", wbytes);
+ 
     ssize_t numBytesRead = recv(key->fd, read_buffer_ptr, wbytes,0);
-    printf("numBytesRead = %ld\n", numBytesRead);
+
     unsigned ret = RESPONSE_LINE_READ;
     if (numBytesRead > 0)
     {
@@ -1116,32 +1060,36 @@ static unsigned response_line_read(struct selector_key *key)
         if(done){
             if(data->status != OK){
                 ret = ERROR;
+                goto finally;
             }else{
-                printf("termine de parsear sin error\n");
-                printf("codigo: %s\n", rl->response_line_data.status_code);
-                printf("message: %s\n", rl->response_line_data.status_message);
-                printf("version %d.%d\n", rl->response_line_data.version_major, rl->response_line_data.version_minor);
-            
-                strcpy(data->log_data.status_code, (char*)rl->response_line_data.status_code);
-                ret = RESPONSE_LINE_WRITE;
+                
                 if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
                 {
-                    abort();
+                    data->status = INTERNAL_SERVER_ERROR;
+                    ret = ERROR;
+                    goto finally;
                 }
+                strcpy(data->log_data.status_code, (char*)rl->response_line_data.status_code);
+                ret = RESPONSE_LINE_WRITE;
+             
+
             }
         }
     }
     else
     {
+        data->status = INTERNAL_SERVER_ERROR;
         ret = ERROR;
     }
-
-    return data->status != OK ? ERROR : ret;
+finally:
+    return ret;
 }
 static void request_message_on_departure(const unsigned state, struct selector_key *key){
+    assert(state == REQUEST_MESSAGE);
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
     request_message_parser_destroy(&rm->parser);
+    printf("request_message on departure\n");
 }
 
 
@@ -1150,25 +1098,23 @@ static void request_message_on_departure(const unsigned state, struct selector_k
 ////////////////////////////////////////////////////////////////////////////////
 
 static void response_line_write_init(const unsigned state,struct selector_key *key){
-    printf("response_line_write_init\n");
-
-
+  
     struct httpd *data = ATTACHMENT(key);
     assert(state == RESPONSE_LINE_WRITE && data->origin_fd != -1);
-    struct response_line_st* rl = &(data->client.response_line);
-
+    struct response_line_st* rl = &(data->origin.response_line);
+    bool is_connect_response = is_connect(data->log_data.method);
+    char *format = is_connect_response ?  "HTTP/%d.%d %s %s\r\n\r\n": "HTTP/%d.%d %s %s\r\n";
+    unsigned format_len = is_connect_response ? 14 : 12;
     size_t code_len = strlen((char*)rl->response_line_data.status_code);
-    printf("code len %ld\n", code_len);
     size_t status_msg_len = strlen((char*)rl->response_line_data.status_message);
-    printf("status msg len %ld\n", status_msg_len);
-    rl->data.data_to_send_len = code_len + status_msg_len + 12;
+    rl->data.data_to_send_len = code_len + status_msg_len + format_len;
     rl->data.data_to_send = (uint8_t*)malloc( rl->data.data_to_send_len);
-
-    if(-1 == sprintf((char*)rl->data.data_to_send,"HTTP/%d.%d %s %s\r\n",1,0, (char*)rl->response_line_data.status_code, (char*)rl->response_line_data.status_message)){
+   
+    if(-1 == sprintf((char*)rl->data.data_to_send,format,VERSION_MAJOR,VERSION_MINOR, (char*)rl->response_line_data.status_code, (char*)rl->response_line_data.status_message)){
         abort();
     }
+
     rl->data.data_to_send[rl->data.data_to_send_len] = '\0';
-    printf("request_line_to_send: %s\ntotal_len %d\n", rl->data.data_to_send,rl->data.data_to_send_len);
     buffer *b = &rl->data.data_to_send_buffer;
     buffer_init(b, rl->data.data_to_send_len,rl->data.data_to_send);
     buffer_write_adv(b,rl->data.data_to_send_len);
@@ -1180,30 +1126,36 @@ static void response_line_write_init(const unsigned state,struct selector_key *k
 }
 
 static void response_line_write_on_departure(const unsigned state,struct selector_key *key){
+    assert(state == RESPONSE_LINE_WRITE);
     struct httpd *data = ATTACHMENT(key);
-    struct response_line_st* rl = &(data->client.response_line);
+    struct response_line_st* rl = &(data->origin.response_line);
     free(rl->data.data_to_send);
 }
 
 static unsigned response_line_write(struct selector_key *key){
-    printf("RESPONSE_LINE_WRITE\n");
     struct httpd *data = ATTACHMENT(key);
     data->status = OK;
     assert(data->client_fd == key->fd);
 
-    struct response_line_st* rl = &(data->client.response_line);
+    struct response_line_st* rl = &(data->origin.response_line);
     buffer *b = &rl->data.data_to_send_buffer;
     unsigned ret = RESPONSE_LINE_WRITE;
     bool error = false;
     bool done = send_buffer(data->origin_fd, data->client_fd, b, key->s, &rl->data, &error);
-    if(!error){
+     if(!error){
         if(done){
+            if(is_connect(data->log_data.method)){
+                return COPY;
+            }
             ret = RESPONSE_MESSAGE;
         }
+    }else if(done){
+        ret = DONE;
+    }else{
+        ret = ERROR;
     }
 
-finally :
-    return error ? ERROR : ret;
+    return ret;
 }
 ////////////////////////////////////////////////////////////////////////////////
 // RESPONSE MESSAGE
@@ -1211,9 +1163,10 @@ finally :
 
 static void response_message_init(const unsigned state,struct selector_key *key){
     printf("response message init\n");
+    assert(state == RESPONSE_MESSAGE);
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.request_message;
-    rm->rb = &data->from_origin_buffer;
+    rm->rb = &data->client_write;
     request_message_parser_init(&rm->parser,1,true);
     add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
     
@@ -1222,61 +1175,62 @@ static void response_message_init(const unsigned state,struct selector_key *key)
         abort();
     }
     if(buffer_can_read(rm->rb)){
-        printf("buffer can read\n");
         // ademas de la request line, se escribieron headers y/o body en el buffer de lectura del cliente
         if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_WRITE))
         {
             abort();
         }
     }
+      printf("response message init end\n");
 }
 
 
 static unsigned response_message_write(struct selector_key* key){
-      // printf("request message WRITE\n");
+      printf("response message write\n");
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.request_message;
 
-    buffer *origin_rb = rm->rb;
-    bool error = false;
+    buffer *client_wb = rm->rb;
+    printf("llega aca\n");
+    data->status = OK;
     unsigned ret = RESPONSE_MESSAGE;
    
-    bool done = send_message(data->origin_fd, data->client_fd, origin_rb, &rm->parser, key->s, &error,&data->log_data);
-    if(error){
-        data->status = INTERNAL_SERVER_ERROR;
+    bool done = send_message(data->origin_fd, data->client_fd, client_wb, &rm->parser, key->s,&data->log_data,&data->status);
+    if(data->status != OK){
         ret = ERROR;
     }else if(done){
-        printf(" rm METHOD: %s\n", data->log_data.method);
         ret = DONE;
     }
+      printf("response message write end\n");
     return ret;
 }
 
 static unsigned response_message_read(struct selector_key* key){
+      printf("response message read\n");
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.request_message;
     buffer * origin_rb = rm->rb;
-    bool error = false;
-    unsigned ret = REQUEST_MESSAGE;
-    bool done = read_message(data->origin_fd, data->client_fd, origin_rb, key->s,&error);
-    if (error)
+    data->status = OK;
+    unsigned ret = RESPONSE_MESSAGE;
+    bool done = read_message(data->origin_fd, data->client_fd, origin_rb, key->s,&data->status);
+    if (data->status != OK)
     {
-        data->status = INTERNAL_SERVER_ERROR;
         ret = ERROR;
     }else if(done){
         ret = DONE;
     }
-    
+      printf("response message read end\n");
     return ret;
 }
 
 
 static void response_message_on_departure(const unsigned state, struct selector_key *key){
+      printf("response message on reparture\n");
+    assert(state == RESPONSE_MESSAGE);
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.request_message;
-    printf(" 1rm d METHOD: %s\n", data->log_data.method);
     request_message_parser_destroy(&rm->parser);
-    printf(" 2rm d METHOD: %s\n", data->log_data.method);
+     printf("response message on departure end\n");
 }
 
 
@@ -1286,22 +1240,21 @@ static void response_message_on_departure(const unsigned state, struct selector_
 
 static void error_init(const unsigned state,struct selector_key * key){
     assert(state == ERROR);
-    printf("ERROR_INIT\n");
     struct httpd *data = ATTACHMENT(key);
 
-    struct response_line_st * rl = &data->client.response_line;
+    struct response_line_st * rl = &data->origin.response_line;
 
 
     error_status_code status = data->status;
     const struct error_response response = error_responses[status];
     memcpy(data->log_data.status_code,response.status,strlen(response.status));
-    rl->data.data_to_send_len = strlen(response.status_message) + 15;
+    rl->data.data_to_send_len = strlen(response.status_message) + 17;
     rl->data.data_to_send = (uint8_t *)malloc(rl->data.data_to_send_len);
     rl->data.data_to_send_written = 0;
     if(rl->data.data_to_send == NULL){
         abort();
     }
-    if (-1 == sprintf((char*)rl->data.data_to_send, "HTTP/%d.%d %s %s\r\n", response.http_version_major, response.http_version_minor, response.status, response.status_message))
+    if (-1 == sprintf((char*)rl->data.data_to_send, "HTTP/%d.%d %s %s\r\n\r\n", response.http_version_major, response.http_version_minor, response.status, response.status_message))
     {
         abort();
     }
@@ -1320,7 +1273,7 @@ static unsigned error_write(struct selector_key* key){
     struct httpd *data = ATTACHMENT(key);
     assert(data->client_fd == key->fd);
 
-    struct response_line_st* rl = &(data->client.response_line);
+    struct response_line_st* rl = &(data->origin.response_line);
 
     buffer *b = &rl->data.data_to_send_buffer;
     unsigned ret = ERROR;
@@ -1335,7 +1288,6 @@ static unsigned error_write(struct selector_key* key){
         ret = DONE;
     }
 
-finally :
     return ret;
 }
 
@@ -1344,23 +1296,23 @@ finally :
 ////////////////////////////////////////////////////////////////////////////////
 
 static void copy_init(const unsigned state,struct selector_key *key){
+    printf("copy init\n");
     assert(state == COPY);
-    printf("COPY_INIT\n");
     struct httpd *data = ATTACHMENT(key);
     struct copy_st *copy = &data->client.copy;
 
     copy->fd = data->client_fd;
     copy->copy_to = &data->origin.copy;
     copy->interest = OP_READ | OP_WRITE;
-    copy->rb = &data->from_origin_buffer;
-    copy->wb = &data->from_client_buffer;
+    copy->rb = &data->client_read;
+    copy->wb = &data->client_write;
 
     copy = &data->origin.copy;
     copy->fd = data->origin_fd;
     copy->copy_to = &data->client.copy;
     copy->interest = OP_READ | OP_WRITE;
-    copy->rb = &data->from_client_buffer;
-    copy->wb = &data->from_origin_buffer;
+    copy->rb = &data->client_write;
+    copy->wb = &data->client_read;
     if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
     {
         abort();
@@ -1385,17 +1337,10 @@ static void selector_set_new_interest(struct copy_st* copy,fd_selector s){
     fd_interest new_interests = OP_NOOP;
 
     if((copy->interest & OP_READ) && buffer_can_write(copy->rb)){
-      
         new_interests |= OP_READ;
-    }else{
-         printf("no agrego read\n");
     }
     if((copy->interest & OP_WRITE) && buffer_can_read(copy->wb)){
-
-    
         new_interests |= OP_WRITE;
-    }else{
-        printf("no agrego write\n");
     }
     
     if(SELECTOR_SUCCESS != selector_set_interest(s,copy->fd,new_interests)){
@@ -1403,7 +1348,6 @@ static void selector_set_new_interest(struct copy_st* copy,fd_selector s){
     }
 }
 static unsigned copy_read(struct selector_key *key){
-    printf("COPY_READ\n");
     struct copy_st *copy = get_copy_from_key(key);
     struct httpd *data = ATTACHMENT(key);
 
@@ -1437,7 +1381,6 @@ static unsigned copy_read(struct selector_key *key){
         buffer_write_adv(copy->rb, numBytesRead);
         if(get_disectors_enabled() && copy->fd == ATTACHMENT(key)->client_fd){
             // Sniffeo lo que envia el cliente
-                printf("SNIFFEO ESCRITURA CLIENTE\n");
             // Quiero ver si es una HTTP Request
             http_disector_consume(&ATTACHMENT(key)->http_disector,copy->rb);
             // Quiero ver si es un mensaje POP3 
@@ -1453,7 +1396,6 @@ static unsigned copy_read(struct selector_key *key){
 
 static unsigned copy_write(struct selector_key *key){
 
-    printf("COPY_WRITE\n");
     struct copy_st *copy = get_copy_from_key(key);
     struct httpd *data = ATTACHMENT(key);
 
@@ -1468,7 +1410,6 @@ static unsigned copy_write(struct selector_key *key){
         data->status = INTERNAL_SERVER_ERROR;
         ret = ERROR;
     }else if(numBytesWritten == 0){
-        printf("send devuelve 0\n");
         // si llega EOF entonces debo quitar OP_WRITE del copy actual y OP_READ del copy_to
         // la conexión no termina ya que puede quedar data en el buffer con dirección contraria
         copy->interest &= ~OP_WRITE;
@@ -1480,7 +1421,6 @@ static unsigned copy_write(struct selector_key *key){
       
         if(copy->interest == OP_NOOP){
             // una de las partes no puede leer ni enviar más datos
-            printf("interest == NOOP\n");
             return DONE;
         }
 
@@ -1489,7 +1429,6 @@ static unsigned copy_write(struct selector_key *key){
 
         if(get_disectors_enabled() && copy->fd == ATTACHMENT(key)->client_fd){
             // Sniffeo lo que lee el cliente
-            printf("SNIFFEO LECTURA CLIENTE\n");
             // Quiero ver si es un mensaje POP3 
             pop3_disector_consume(&ATTACHMENT(key)->pop3_disector,copy->wb);
         }

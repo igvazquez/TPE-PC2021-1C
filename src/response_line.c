@@ -257,7 +257,7 @@ static error_status_code process_event(const struct parser_event * e, response_l
             break;
         case RS_STATUS_MESSAGE:
             if(rl->message_counter >= MAX_MSG_LENGTH){
-                printf("counter >= max_msg_length\n");
+         
                 status = BAD_REQUEST;
                 goto finally;
             }
@@ -292,7 +292,7 @@ bool response_line_parser_consume(buffer *buffer, response_line_parser *parser, 
     while (buffer_can_read(buffer))
     {
         uint8_t c = buffer_read(buffer);
-    
+  
         e = parser_feed(parser->rl_parser, c);
   
         do{

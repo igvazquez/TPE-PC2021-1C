@@ -5,9 +5,7 @@
 #include "../include/parse_doh_http_response.h"
 #include <sys/socket.h>
 #include <arpa/inet.h>
-
 #include <stdio.h>
-
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
@@ -31,10 +29,8 @@ void doh_init(doh * doh, char * fqdn){
     buffer_init(&doh->buffer,N(doh->data),doh->data);
     doh->FQDN = fqdn;
     doh->server_info = get_doh_info();
-    printf("resolve init\n");
 }
 void doh_close(struct selector_key * key){
-    printf("doh close\n");
     doh_kill(key);
 }
 
@@ -112,40 +108,26 @@ void get_response(doh * doh , doh_response * doh_response){
         eat_byte(doh_response,byte);
         state = doh_response->current_state;
     }
-    printf("termine de eat bytes\n");
-
-
     doh_response->dns_response_parsed = *parse_answer(doh_response->dns_response,doh_response->content_length,doh->resolve_info);
 
 
 }
 
 void doh_read(struct selector_key * key){
-    printf("doh_read\n");
     doh * current_doh = (doh*) key->data;
-
     doh_response response ;
-
     size_t nbyte = 0;
     uint8_t  * aux = buffer_write_ptr(&current_doh->buffer,&nbyte);
 
     //leemos del socket doh
     int r_bytes = recv(current_doh->socket,aux,nbyte,0);
-    printf("lei %d bytes\n", r_bytes);
     if (r_bytes > 0 ){
         buffer_write_adv(&current_doh->buffer,r_bytes);
-        printf("get response\n");
         get_response(current_doh,&response);
             char buff[60];
             sockaddr_to_human(buff,60,(const struct sockaddr*)current_doh->resolve_info->storage);
-            printf("2 dns storage = %s\n", buff);
         if (response.current_state == finished){
-            printf("get response termino\n");
-            printf("storage dir: %p\n", current_doh->resolve_info->storage);
-
-            printf("setee OP WRITE al cliente");
             current_doh->resolve_info->status = RESOLVE_OK;
-            printf("STATUS RESOLVE OK");
             doh_kill(key);
             if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
                 close_client(key);
@@ -165,30 +147,20 @@ void doh_read(struct selector_key * key){
             close_client(key);
         }
         doh_kill(key);
-   // free(current_doh->resolve_info->storage);
-   // doh_kill(key);
-
 
 }
 
 void doh_kill(struct selector_key * key){
     doh * current_doh = (doh*) key->data;
-    printf("doh kill1 \n");
     //nos salimos del selector y liberamos recursos
     if(selector_unregister_fd(key->s,current_doh->socket) == -1){
-       
-        printf("doh kill 2\n");
         abort();
     }
      
     if(close(current_doh->socket) == -1){
-        printf("doh kill 3\n");
         abort();
     }
-    printf("doh kill 4\n");
     free(current_doh);
-    //frees?
-
 }
 
 //arma la query en http con metodo GET
@@ -278,7 +250,6 @@ void doh_write (struct selector_key * key){
         if(socket_error!=0)
             goto finally;
         else{
-            printf("conexion del DOH correcta\n");
             size_t nbytes = 0;
             int req_len = doh_request(current_doh);
             if (req_len == EXIT_FAILURE)
@@ -288,13 +259,9 @@ void doh_write (struct selector_key * key){
             ssize_t bytes_sent = send(key->fd,request,nbytes, MSG_NOSIGNAL);
             if (bytes_sent <=0)
                 goto finally;
-
             //queremos leer la rta del doh server ahora
             buffer_read_adv(&current_doh->buffer,bytes_sent);
-
             if(!buffer_can_read(&current_doh->buffer)){
-
-                printf("Escribi toda la request\n");
                 if (selector_set_interest_key(key, OP_READ) != SELECTOR_SUCCESS)
                     goto finally;
 
