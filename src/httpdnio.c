@@ -847,6 +847,7 @@ static unsigned request_line_write(struct selector_key *key){
 
 static void content_length_on_value_end(struct request_message_parser* parser,struct  log_data*log_data,error_status_code * status){
     assert(parser != NULL && parser->current_detection != NULL);
+    errno = 0;
     long content_length = strtol(get_detection_value(parser),NULL,10);
     if ((errno == ERANGE && (content_length == LONG_MAX || content_length == LONG_MIN))
         || (errno != 0 && content_length == 0)) {
@@ -955,7 +956,7 @@ static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_
         
   
     if(parser->data_index > 0){
-           printf("send message send\n");
+        printf("send message send\n");
         ssize_t numBytesWritten = send(write_fd, parser->data, parser->data_index,MSG_NOSIGNAL);
         if(numBytesWritten <= 0){
     
@@ -970,11 +971,11 @@ static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_
             }
             buffer_write_adv(rb, parser->data_index - numBytesWritten);
         }
-                 printf("termino send\n");
+        printf("termino send\n");
     }
     parser->data_index = 0;
     if(!done){
-         printf("send message no done\n");
+        printf("send message no done\n");
         if(buffer_can_write(rb)){   
             if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_READ))
             {
@@ -994,7 +995,7 @@ static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_
             goto finally;
     }
         
-                 printf("send message end\n");   
+    printf("send message end\n");
 finally:
     return done;
 }
@@ -1198,10 +1199,22 @@ static unsigned response_message_write(struct selector_key* key){
     bool done = send_message(data->origin_fd, data->client_fd, client_wb, &rm->parser, key->s,&data->log_data,&data->status);
     if(data->status != OK){
         ret = ERROR;
+        goto finally;
     }else if(done){
         ret = DONE;
     }
-      printf("response message write end\n");
+    printf("response message write end\n");
+    return ret;
+
+finally:
+    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
+    {
+        abort();
+    }
+    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_WRITE))
+    {
+        abort();
+    }
     return ret;
 }
 
@@ -1225,12 +1238,12 @@ static unsigned response_message_read(struct selector_key* key){
 
 
 static void response_message_on_departure(const unsigned state, struct selector_key *key){
-      printf("response message on reparture\n");
+    printf("response message on departure\n");
     assert(state == RESPONSE_MESSAGE);
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.request_message;
     request_message_parser_destroy(&rm->parser);
-     printf("response message on departure end\n");
+    printf("response message on departure end\n");
 }
 
 
