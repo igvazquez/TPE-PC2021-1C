@@ -128,9 +128,9 @@ void doh_read(struct selector_key * key){
         get_response(current_doh,&response);
         if (response.current_state == finished){
             current_doh->resolve_info->status = RESOLVE_OK;
-            printf("doh finished\n");
+          
             free(response.dns_response);
-            printf("doh finished free\n");
+         
 
             if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
                 close_client(key);
@@ -147,9 +147,9 @@ void doh_read(struct selector_key * key){
     }
     finally:
         current_doh->resolve_info->status = RESOLVE_ERROR;
-        printf("doh finally\n");
+      
         free(response.dns_response);
-        printf("doh finally free\n");
+      
 
     if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
             close_client(key);
@@ -218,8 +218,6 @@ char * create_doh_get_req (doh * doh, size_t * req_len){
     http_req[http_req_len] = 0;
     *req_len = http_req_len +1 ;
 
-    for(int i = 0;i < http_req_len +1;i++)
-        putchar(http_req[i]);
     return http_req;
 }
 

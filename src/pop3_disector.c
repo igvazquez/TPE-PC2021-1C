@@ -6,11 +6,16 @@
 #include <stdio.h>
 enum state
 {
-    GREETING_PLUS,
+   /* GREETING_0,
+    GREETING_E,
+    GREETING_ER,
+    GREETING_ERR,
+    GREETINNG_ERR_END,
     GREETING_O,
     GREETING_OK,
-    GREETING_MESSAGE,
-    GREETING_CR,
+    GREETING_OK_END,
+    MESSAGE,
+    GREETING_CR,*/
     USER0,
     USER1,
     USER2,
@@ -102,24 +107,48 @@ done(struct parser_event *ret, const uint8_t c) {
 ///////////////////////////////////////////////////////////////////////////////
 // Transiciones
 
-static const struct parser_state_transition ST_GREETING_PLUS[] =  {
+/*static const struct parser_state_transition ST_GREETING_0[] =  {
     {.when = '+',        .dest = GREETING_O,         .act1 = message,},
+    {.when = '-',        .dest = GREETING_E,         .act1 = message,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
+static const struct parser_state_transition ST_GREETING_E[] =  {
+  
+    {.when = 'E',        .dest = GREETING_ER,         .act1 = message,},
+    {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
+};
+
+
+static const struct parser_state_transition ST_GREETING_ER[] =  {
+    {.when = 'R',        .dest = GREETING_ERR,         .act1 = message,},
+    {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
+};
+
+static const struct parser_state_transition ST_GREETING_ERR[] =  {
+    {.when = 'R',        .dest = GREETINNG_ERR_END,         .act1 = message,},
+    {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
+};
+static const struct parser_state_transition ST_GREETING_ERR_END[] =  {
+    {.when = ' ',        .dest = MESSAGE,         .act1 = message,},
+    {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
+};
 static const struct parser_state_transition ST_GREETING_O[] =  {
-    {.when = 'O',        .dest = GREETING_OK,         .act1 = message,},
+    {.when = 'O',        .dest = GREETING_OK,         .act1 = message,},  
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
-
 static const struct parser_state_transition ST_GREETING_OK[] =  {
-    {.when = 'K',        .dest = GREETING_MESSAGE,         .act1 = message,},
+    {.when = 'K',        .dest = GREETING_OK_END,         .act1 = message,},
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
-static const struct parser_state_transition ST_GREETING_MESSAGE[] =  {
+static const struct parser_state_transition ST_GREETING_OK_END[] =  {
+    {.when = ' ',        .dest = MESSAGE,         .act1 = message,},
+    {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
+};
+static const struct parser_state_transition ST_MESSAGE[] =  {
     {.when = '\r',        .dest = GREETING_CR,         .act1 = message,},
-    {.when = ANY,        .dest = GREETING_MESSAGE,         .act1 = message,},
+    {.when = ANY,        .dest = MESSAGE,         .act1 = message,},
    
 };
 
@@ -128,7 +157,7 @@ static const struct parser_state_transition ST_GREETING_CR[] =  {
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
    
 };
-
+*/
 static const struct parser_state_transition ST_USER0[] =  {
     {.when = 'U',        .dest = USER1,         .act1 = wait,},
     {.when = 'u',        .dest = USER1,         .act1 = wait,},
@@ -265,11 +294,16 @@ static const struct parser_state_transition ST_DONE[] =  {
 // Declaración formal
 static const struct parser_state_transition *states[] =
 {
-    ST_GREETING_PLUS,
+   /* ST_GREETING_0,
+    ST_GREETING_E,
+    ST_GREETING_ER,
+    ST_GREETING_ERR,
+    ST_GREETING_ERR_END,
     ST_GREETING_O,
     ST_GREETING_OK,
-    ST_GREETING_MESSAGE,
-    ST_GREETING_CR,
+    ST_GREETING_OK_END,
+    ST_MESSAGE,
+    ST_GREETING_CR,*/
     ST_USER0,
     ST_USER1,
     ST_USER2,
@@ -300,11 +334,16 @@ static const struct parser_state_transition *states[] =
 #define N(x) (sizeof(x)/sizeof((x)[0]))
 
 static const size_t states_n [] = {
-    N(ST_GREETING_PLUS),
+/*    N(ST_GREETING_0),
+    N(ST_GREETING_E),
+    N(ST_GREETING_ER),
+    N(ST_GREETING_ERR),
+    N(ST_GREETING_ERR_END),
     N(ST_GREETING_O),
     N(ST_GREETING_OK),
-    N(ST_GREETING_MESSAGE),
-    N(ST_GREETING_CR),
+    N(ST_GREETING_OK_END),
+    N(ST_MESSAGE),
+    N(ST_GREETING_CR),*/
     N(ST_USER0),
     N(ST_USER1),
     N(ST_USER2),
@@ -334,7 +373,7 @@ static struct parser_definition definition = {
     .states_count = N(states),
     .states       = states,
     .states_n     = states_n,
-    .start_state  = GREETING_PLUS,
+    .start_state  = USER0,
 };
 
 const struct parser_definition * pop3_disector_parser_definition(void){

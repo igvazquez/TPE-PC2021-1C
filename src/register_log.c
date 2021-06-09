@@ -113,48 +113,55 @@ static void log_register(struct log_data *log_data, char reg_type) {
     char *format = NULL;
     size_t wBytes;
     struct stdout_writer* writer_data = get_stdout_writer_data();
-    char buffer[2024];
+
     uint8_t * write_ptr = buffer_write_ptr(&writer_data->wb,&wBytes);
     int n = 0;
-    if(reg_type == 'A'){
-            int client_addr_length = log_data->client_addr->ss_family == AF_INET ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
+    if(wBytes > 0){
+        if(reg_type == 'A'){
+                int client_addr_length = log_data->client_addr->ss_family == AF_INET ? INET_ADDRSTRLEN : INET6_ADDRSTRLEN;
 
-            char client_address_str[client_addr_length];
-            set_address_string(*log_data->client_addr, client_address_str ,client_addr_length);
-            char* format = "%s\tA\t%s\t%d\t%s\thttp://%s%s\t%s\n";
-            char *origin_form = log_data->origin_form;
+                char client_address_str[client_addr_length];
+                set_address_string(*log_data->client_addr, client_address_str ,client_addr_length);
+                char* format = "%s\tA\t%s\t%d\t%s\thttp://%s%s\t%s\n";
+                char *origin_form = log_data->origin_form;
+                char *origin_addr = get_origin_string(log_data->origin_addr, log_data->origin_addr_type, log_data->origin_port);
+                n = snprintf((char*)write_ptr,wBytes,format, log_data->date,client_address_str, ntohs(get_address_port(*log_data->client_addr)), log_data->method,origin_addr ,origin_form, log_data->status_code);
+                free(origin_addr);
+        }else if(reg_type == 'P'){
             char *origin_addr = get_origin_string(log_data->origin_addr, log_data->origin_addr_type, log_data->origin_port);
-            n = snprintf(buffer,2024,format, log_data->date,client_address_str, ntohs(get_address_port(*log_data->client_addr)), log_data->method,origin_addr ,origin_form, log_data->status_code);
-            free(origin_addr);
-    }else if(reg_type == 'P'){
-        char *origin_addr = get_origin_string(log_data->origin_addr, log_data->origin_addr_type, log_data->origin_port);
-        char *host;
-        char *port;
+            char *host;
+            char *port;
 
-        if(origin_addr != NULL){
-            host = strtok(origin_addr, ":");
-            port = strtok(NULL, ":");
+            if(origin_addr != NULL){
+                host = strtok(origin_addr, ":");
+                port = strtok(NULL, ":");
+            }else{
+                host = "UNKOWN";
+                port = "UNKOWN";
+            }
+        
+            format = "%s\tP\t%s\t%s\t%s\t%s\t%s\n";
+            n = snprintf((char*)write_ptr,wBytes,format, log_data->date,get_protocol_string(log_data->protocol),host, port, log_data->user, log_data->password);
+            free(origin_addr);
         }else{
-            host = "UNKOWN";
-            port = "UNKOWN";
+            return;
         }
-    
-        format = "%s\tP\t%s\t%s\t%s\t%s\t%s\n";
-        n = snprintf(buffer,100,format, log_data->date,get_protocol_string(log_data->protocol),host, port, log_data->user, log_data->password);
-        free(origin_addr);
-    }else{
-        return;
-    }
-    printf("%s",buffer);
-    /*  if ((unsigned)n > wBytes){
+        if ((unsigned)n > wBytes){
         buffer_write_adv(&writer_data->wb,wBytes);
+        }
+        else{
+            buffer_write_adv(&writer_data->wb,n);
+        }
+        
+        if(SELECTOR_SUCCESS != selector_set_interest(*writer_data->selector,1, OP_WRITE)){
+            abort();
+        }
     }
-    else{
-        buffer_write_adv(&writer_data->wb,n);
-    }
+  
+
+    
    
 
-    selector_set_interest(*writer_data->selector,1, OP_WRITE);*/
 }
 
 void register_access(struct log_data *log_data){

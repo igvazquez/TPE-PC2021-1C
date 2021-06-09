@@ -184,7 +184,7 @@ main(const int argc, const char **argv) {
         err_msg = "registering fd IPV4";
         goto finally;
     }
-      printf("register serverv6 %d\n", serverV6);
+    printf("register serverv6 %d\n", serverV6);
     ss = selector_register(selector, serverV6, &httpd,
                                               OP_READ, NULL);
     if(ss != SELECTOR_SUCCESS) {
@@ -194,8 +194,8 @@ main(const int argc, const char **argv) {
 /////////////////////////////////////////////////////////////////
 //  NON BLOCKING STD OUT REGISTERING
 /////////////////////////////////////////////////////////////////
-    //stdout_writer_initialize(&selector);
- /*   const struct fd_handler stdout_handler = {
+    stdout_writer_initialize(&selector);
+    const struct fd_handler stdout_handler = {
         .handle_read       = NULL,
         .handle_write      = stdout_write,
         .handle_close      = NULL, // nada que liberar
@@ -213,7 +213,7 @@ main(const int argc, const char **argv) {
         err_msg = "registering fd STDOUT";
         goto finally;
     }
-*/
+
 ////////////////////////////////////////////////////////////////
 
     for(;!done;) {
