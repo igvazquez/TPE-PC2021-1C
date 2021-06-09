@@ -1211,7 +1211,7 @@ finally:
     {
         abort();
     }
-    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_WRITE))
+    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
     {
         abort();
     }
