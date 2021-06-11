@@ -715,11 +715,11 @@ static unsigned connecting_done(struct selector_key *key){
             // se conectó bien
 
             // quiero leer del cliente
-           /* if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->client_fd, OP_NOOP))
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->client_fd, OP_NOOP))
             {
                 data->status = INTERNAL_SERVER_ERROR;
                 goto finally;
-            }*/
+            }
        
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->origin_fd, OP_NOOP)){
                 data->status = INTERNAL_SERVER_ERROR;
@@ -898,7 +898,7 @@ static void request_message_init(const unsigned state,struct selector_key *key){
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
     rm->rb = &data->client_read;
-    request_message_parser_init(&rm->parser,6,true); // <= cantidad de headers a tener en cuenta, podria mejorarse la interfaz para que no sea necesario pasarselo
+    request_message_parser_init(&rm->parser,6,true); // <= cantidad de headers a tener en cuenta, podria mejorarse la interfaz para que no sea necesario pasarselo ya que siempre se me olvida
        
     // El parser de header es case insensitive
     add_header(&rm->parser, "Host", HEADER_REPLACE,get_origin_string(data->log_data.origin_addr,data->log_data.origin_addr_type,data->log_data.origin_port), NULL);

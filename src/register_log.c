@@ -105,8 +105,8 @@ static char* get_protocol_string(enum protocol protocol){
     return NULL;
 }
 
-static in_port_t get_address_port(struct sockaddr_storage address){
-    return address.ss_family == AF_INET ? ((struct sockaddr_in*)&address)->sin_port : ((struct sockaddr_in6*)&address)->sin6_port;
+static in_port_t get_address_port(struct sockaddr_storage *address){
+    return address->ss_family == AF_INET ? ((struct sockaddr_in*)address)->sin_port : ((struct sockaddr_in6*)address)->sin6_port;
 }
 
 static void log_register(struct log_data *log_data, char reg_type) {
@@ -125,7 +125,7 @@ static void log_register(struct log_data *log_data, char reg_type) {
                 char* format = "%s\tA\t%s\t%d\t%s\thttp://%s%s\t%s\n";
                 char *origin_form = log_data->origin_form;
                 char *origin_addr = get_origin_string(log_data->origin_addr, log_data->origin_addr_type, log_data->origin_port);
-                n = snprintf((char*)write_ptr,wBytes,format, log_data->date,client_address_str, ntohs(get_address_port(*log_data->client_addr)), log_data->method,origin_addr ,origin_form, log_data->status_code);
+                n = snprintf((char*)write_ptr,wBytes,format, log_data->date,client_address_str, ntohs(get_address_port(log_data->client_addr)), log_data->method,origin_addr ,origin_form, log_data->status_code);
                 free(origin_addr);
         }else if(reg_type == 'P'){
             char *origin_addr = get_origin_string(log_data->origin_addr, log_data->origin_addr_type, log_data->origin_port);
@@ -147,13 +147,13 @@ static void log_register(struct log_data *log_data, char reg_type) {
             return;
         }
         if ((unsigned)n > wBytes){
-        buffer_write_adv(&writer_data->wb,wBytes);
+            buffer_write_adv(&writer_data->wb,wBytes);
         }
         else{
             buffer_write_adv(&writer_data->wb,n);
         }
         
-        if(SELECTOR_SUCCESS != selector_set_interest(*writer_data->selector,1, OP_WRITE)){
+        if(SELECTOR_SUCCESS != selector_set_interest(writer_data->selector,STDOUT_FILENO, OP_WRITE)){
             abort();
         }
     }

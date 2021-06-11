@@ -194,7 +194,7 @@ main(const int argc, const char **argv) {
 /////////////////////////////////////////////////////////////////
 //  NON BLOCKING STD OUT REGISTERING
 /////////////////////////////////////////////////////////////////
-    stdout_writer_initialize(&selector);
+    stdout_writer_initialize(selector);
     const struct fd_handler stdout_handler = {
         .handle_read       = NULL,
         .handle_write      = stdout_write,
@@ -202,13 +202,13 @@ main(const int argc, const char **argv) {
     };
 
     // Setting STDOUT has non blocking
-    if (selector_fd_set_nio(1) == -1)
+    if (selector_fd_set_nio(STDOUT_FILENO) == -1)
     {
         err_msg = "setting stdout as non-blocking";
         goto finally;
     }
 
-    ss = selector_register(selector, 1, &stdout_handler,OP_NOOP, get_stdout_writer_data());
+    ss = selector_register(selector, STDOUT_FILENO, &stdout_handler,OP_NOOP, get_stdout_writer_data());
     if(ss != SELECTOR_SUCCESS) {
         err_msg = "registering fd STDOUT";
         goto finally;
