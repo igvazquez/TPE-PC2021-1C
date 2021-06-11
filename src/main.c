@@ -36,7 +36,7 @@
 
 #define STDIN_FILENO 0
 
-#define MAX_WAITING_CONNECTIONS 20
+#define MAX_WAITING_CONNECTIONS 500
 
 static bool done = false;
 

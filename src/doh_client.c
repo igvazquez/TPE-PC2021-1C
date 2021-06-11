@@ -80,11 +80,11 @@ resolve_status resolve (char *fqdn, fd_selector selector, int request_socket, ad
   
     }
 finally:
-    doh->resolve_info->status = RESOLVE_ERROR;
     if(fd != -1){
         close(fd);
     }
     if(doh != NULL){
+        doh->resolve_info->status = RESOLVE_ERROR;
         free(doh);
     }
 

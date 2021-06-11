@@ -44,6 +44,12 @@ const struct error_response error_responses[] = {
         .status_message="Internal Server Error"
     },
     {
+        .status ="501",
+        .http_version_minor = VERSION_MINOR,
+        .http_version_major = VERSION_MAJOR,
+        .status_message="Not implemented"
+    },
+    {
         .status ="502",
         .http_version_minor = VERSION_MINOR,
         .http_version_major = VERSION_MAJOR,

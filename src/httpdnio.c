@@ -489,23 +489,6 @@ static unsigned request_line_read(struct selector_key *key)
             if(data->status != OK){
                 ret = ERROR;
             }else{
-             /*   switch(rl->request_line_data.request_target.host_type){
-                    case ipv6_addr_t:
-                        printf("ipv6 origen: %s\n", rl->parser.parsed_info.host.ipv6_buffer);
-                        break;
-                    case ipv4_addr_t:
-                        printf("ipv4 origen: %s\n", rl->parser.parsed_info.host.domain_or_ipv4_buffer);
-                        break;
-
-                    case domain_addr_t:
-                        printf("domain origen: %s\n", rl->parser.parsed_info.host.domain_or_ipv4_buffer);
-                        break;
-                }
-                printf("Metodo: %s\n", rl->request_line_data.method);
-                printf("puerto: %d\n", ntohs(rl->request_line_data.request_target.port));
-                printf("version %d.%d\n", rl->parser.parsed_info.version_major, rl->parser.parsed_info.version_minor);
-                printf("origin form: %s\n", rl->parser.parsed_info.origin_form_buffer);*/
-                //request_line_parser_reset(&rl->parser);
 
                 if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->client_fd, OP_NOOP))
                 {
@@ -567,10 +550,10 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
             memcpy(data->log_data.origin_addr.domain, rl->request_line_data.request_target.host.domain ,strlen((char*)rl->request_line_data.request_target.host.domain)+1);
             data->log_data.origin_addr_type = domain_addr_t;
 
-            if (SELECTOR_SUCCESS != selector_set_interest(key->s, key->fd, OP_NOOP)){
+           /* if (SELECTOR_SUCCESS != selector_set_interest(key->s, key->fd, OP_NOOP)){
                 data->status = INTERNAL_SERVER_ERROR;
                 ret = ERROR;
-            }
+            }*/
         }
         else
         {
@@ -603,7 +586,7 @@ static unsigned request_resolve_done(struct selector_key * key){
     struct httpd *data = ATTACHMENT(key);
 
     struct request_line_st * rl = &data->client.request_line;
-
+     
     if(rl->resolve_info.status != RESOLVE_OK){
         data->status = BAD_GATEWAY;
         return ERROR;
@@ -619,7 +602,7 @@ static unsigned request_resolve_done(struct selector_key * key){
             return ERROR;
         }
     }else{
-     
+   
         struct sockaddr_storage storage  = rl->resolve_info.storage[rl->resolve_info.qty -1];
         if(rl->resolve_info.type == IPV4){
             struct sockaddr_in  * sin = (struct sockaddr_in * ) &storage;
@@ -633,9 +616,11 @@ static unsigned request_resolve_done(struct selector_key * key){
         data->origin_addr_len = sizeof(storage);
         memcpy(&data->origin_addr,&storage,data->origin_addr_len);
         rl->resolve_info.qty--;
+      
+
         return connect_to_origin(storage.ss_family,key);
     }
-
+finally:
     return ERROR;
 }
 
@@ -674,11 +659,8 @@ static unsigned connect_to_origin(int origin_family,struct selector_key*key){
             // se esta conectando
            // printf("Connect to origin EINPROGRESS origin_fd %d\n",origin_fd);
             // registro el origin_fd para escritura para que me avise cuando si conectó o falló conexión
-
             data->references += 1;
-            selector_status ss = selector_register(key->s, origin_fd, &httpd_handler, OP_WRITE, data);
-
-            if(ss != SELECTOR_SUCCESS){
+            if(selector_register(key->s, origin_fd, &httpd_handler, OP_WRITE, data) != SELECTOR_SUCCESS){
                 data->status = INTERNAL_SERVER_ERROR;
                 goto finally;
             }
@@ -733,11 +715,11 @@ static unsigned connecting_done(struct selector_key *key){
             // se conectó bien
 
             // quiero leer del cliente
-            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->client_fd, OP_NOOP))
+           /* if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->client_fd, OP_NOOP))
             {
                 data->status = INTERNAL_SERVER_ERROR;
                 goto finally;
-            }
+            }*/
        
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->origin_fd, OP_NOOP)){
                 data->status = INTERNAL_SERVER_ERROR;
@@ -747,10 +729,10 @@ static unsigned connecting_done(struct selector_key *key){
             ret = get_next_state(key,(char * )ATTACHMENT(key)->client.request_line.request_line_data.method);
             goto finally;
         }else{
-            if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->client_fd, OP_NOOP)){
+          /*  if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->client_fd, OP_NOOP)){
                 data->status = INTERNAL_SERVER_ERROR;
                 goto finally;
-            }
+            }*/
       
             // hubo error en la conexión
             data->status = errno_response(errno);
@@ -903,6 +885,12 @@ static void content_length_on_value_end(struct request_message_parser* parser,st
     set_content_length(parser,content_length);
 }
 
+static void transfer_encoding_on_value_end(struct request_message_parser* parser,struct  log_data*log_data,error_status_code * status){
+    assert(parser != NULL && parser->current_detection != NULL);
+    *status = NOT_IMPLEMENTED;
+}
+
+
 
 
 static void request_message_init(const unsigned state,struct selector_key *key){
@@ -910,11 +898,12 @@ static void request_message_init(const unsigned state,struct selector_key *key){
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
     rm->rb = &data->client_read;
-    request_message_parser_init(&rm->parser,5,true); // <= cantidad de headers a tener en cuenta, podria mejorarse la interfaz para que no sea necesario pasarselo
+    request_message_parser_init(&rm->parser,6,true); // <= cantidad de headers a tener en cuenta, podria mejorarse la interfaz para que no sea necesario pasarselo
        
     // El parser de header es case insensitive
     add_header(&rm->parser, "Host", HEADER_REPLACE,get_origin_string(data->log_data.origin_addr,data->log_data.origin_addr_type,data->log_data.origin_port), NULL);
     add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
+    add_header(&rm->parser, "Transfer-Encoding", HEADER_IGNORE,NULL, transfer_encoding_on_value_end);
     add_header(&rm->parser, "Connection", HEADER_IGNORE,NULL, NULL);
     add_header(&rm->parser, "Proxy-Authorization",  (HEADER_STORAGE | HEADER_SEND),NULL, decode_credentials);
     add_header(&rm->parser, "Authorization",  (HEADER_STORAGE | HEADER_SEND),NULL, decode_credentials);
@@ -954,7 +943,7 @@ static bool read_message(int read_fd,int write_fd,buffer* rb,fd_selector s, erro
             goto finally;
         }
     }else if(numBytesRead <0){
-         *status = INTERNAL_SERVER_ERROR;
+        *status = INTERNAL_SERVER_ERROR;
         goto finally;
     }else{
         if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
@@ -1282,9 +1271,9 @@ static unsigned response_message_read(struct selector_key* key){
     {
         ret = ERROR;
     }else if(done){
-        ret = DONE;
+        ret = RESPONSE_MESSAGE;
     }
-
+finally:
     return ret;
 }
 
@@ -1474,7 +1463,7 @@ static unsigned copy_write(struct selector_key *key){
     unsigned ret = COPY;
 
  
-   if(numBytesWritten == 0){
+   if(numBytesWritten <= 0){
         // si llega EOF entonces debo quitar OP_WRITE del copy actual y OP_READ del copy_to
         // la conexión no termina ya que puede quedar data en el buffer con dirección contraria
         copy->interest &= ~OP_WRITE;
