@@ -70,8 +70,8 @@ main(const int argc, const char **argv) {
     //TODO: hacer lo mismo para IPV6 como en tcpEchoAddrInfo.c y guardar la familia del IP usado en el struct httpd
     char *ip;
     unsigned short port = get_port();
-    int serverV4 = 0;
-    int serverV6 = 0;
+    int serverV4 = -1;
+    int serverV6 = -1;
     char buff[30];
 
     if((ip = get_ipv4_addr()) != NULL){
@@ -177,20 +177,26 @@ main(const int argc, const char **argv) {
         .handle_write      = NULL,
         .handle_close      = NULL, // nada que liberar
     };
-    printf("register serverv4 %d\n", serverV4);
-    ss = selector_register(selector, serverV4, &httpd,
-                                              OP_READ, NULL);
-    if(ss != SELECTOR_SUCCESS) {
-        err_msg = "registering fd IPV4";
-        goto finally;
+    if(serverV4 != -1){
+         printf("register serverv4 %d\n", serverV4);
+        ss = selector_register(selector, serverV4, &httpd,
+                                                OP_READ, NULL);
+        if(ss != SELECTOR_SUCCESS) {
+            err_msg = "registering fd IPV4";
+            goto finally;
+        }
     }
-    printf("register serverv6 %d\n", serverV6);
-    ss = selector_register(selector, serverV6, &httpd,
-                                              OP_READ, NULL);
-    if(ss != SELECTOR_SUCCESS) {
-        err_msg = "registering fd IPV6";
-        goto finally;
+    if(serverV6 != -1){
+           
+        printf("register serverv6 %d\n", serverV6);
+        ss = selector_register(selector, serverV6, &httpd,
+                                                OP_READ, NULL);
+        if(ss != SELECTOR_SUCCESS) {
+            err_msg = "registering fd IPV6";
+            goto finally;
+        }
     }
+
 /////////////////////////////////////////////////////////////////
 //  NON BLOCKING STD OUT REGISTERING
 /////////////////////////////////////////////////////////////////
