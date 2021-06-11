@@ -1374,6 +1374,8 @@ static void copy_init(const unsigned state,struct selector_key *key){
     copy->interest = OP_READ | OP_WRITE;
     copy->rb = &data->client_write;
     copy->wb = &data->client_read;
+    buffer_reset(copy->wb);
+    buffer_reset(copy->rb);
     if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
     {
         abort();
@@ -1429,7 +1431,6 @@ static unsigned copy_read(struct selector_key *key){
 
         if(copy->interest == OP_NOOP){
             // una de las partes no puede leer ni enviar más datos
-
             return DONE;
         }
 
