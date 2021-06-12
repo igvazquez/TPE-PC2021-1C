@@ -24,7 +24,7 @@ In this example, the 33 bytes are the DNS message in DNS wire format
 //El header tiene 96 bits = 12 bytes
 
 #define HEADER_BYTES 12
-#define AAAA_QTYPE 0x0c
+#define AAAA_QTYPE 0x1c
 #define A_QTYPE 0x01
 
 void create_header(unsigned  char * result){
