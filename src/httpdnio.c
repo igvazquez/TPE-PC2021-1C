@@ -363,6 +363,7 @@ httpd_destroy(struct httpd *s) {
 
 static void
 httpd_close(struct selector_key *key) {
+   //  printf("httpd_close\n");
    httpd_destroy(ATTACHMENT(key));
 }
 static void
@@ -371,7 +372,8 @@ httpd_done(struct selector_key* key) {
         ATTACHMENT(key)->client_fd,
         ATTACHMENT(key)->origin_fd,
     };
-   // printf("Cierro conexión entre cliente %d y origin %d\n", fds[0], fds[1]);
+    //printf("httpd_done\n");
+    // printf("Cierro conexión entre cliente %d y origin %d\n", fds[0], fds[1]);
     for(unsigned i = 0; i < N(fds); i++) {
         if(fds[i] != -1) {
             if(SELECTOR_SUCCESS != selector_unregister_fd(key->s, fds[i])) {
@@ -514,8 +516,8 @@ finally:
 
 static unsigned request_line_process(struct request_line_st * rl,struct selector_key * key){
     unsigned ret = ERROR;
-   
 
+    //printf("line process\n");
     struct httpd *data = ATTACHMENT(key);
 
     switch (rl->request_line_data.request_target.host_type)
@@ -546,14 +548,15 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
     case domain_addr_t:
         if (resolve(rl->request_line_data.request_target.host.domain, key->s, data->client_fd, &rl->resolve_info) != RESOLVE_ERROR)
         {
+           // printf("termina resolve bie\n");
             ret = REQUEST_RESOLVE;
             memcpy(data->log_data.origin_addr.domain, rl->request_line_data.request_target.host.domain ,strlen((char*)rl->request_line_data.request_target.host.domain)+1);
             data->log_data.origin_addr_type = domain_addr_t;
-
-           /* if (SELECTOR_SUCCESS != selector_set_interest(key->s, key->fd, OP_NOOP)){
+          //  printf("seteo client en OP_NOOP\n");
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->client_fd, OP_NOOP)){
                 data->status = INTERNAL_SERVER_ERROR;
                 ret = ERROR;
-            }*/
+            }
         }
         else
         {
@@ -582,22 +585,26 @@ static void request_line_read_on_departure(const unsigned state,struct selector_
 ////////////////////////////////////////////////////////////////////////////////
 // REQUEST RESOLVE
 ////////////////////////////////////////////////////////////////////////////////
+
+
 static unsigned request_resolve_done(struct selector_key * key){
     struct httpd *data = ATTACHMENT(key);
-
+   // printf("resolve done\n");
     struct request_line_st * rl = &data->client.request_line;
-     
+   // printf("en resolve done soy %d\n", key->fd);
     if(rl->resolve_info.status != RESOLVE_OK){
         data->status = BAD_GATEWAY;
         return ERROR;
     }
     if(rl->resolve_info.qty == 0){
- 
+        //printf("qty == 0\n");
         if(rl->resolve_info.type == IPV4){
+            //printf(" era ipv4\n");
             rl->resolve_info.type = IPV6;
           
             return request_line_process(rl,key);
         }else{
+           // printf(" era ipv6\n");
             data->status = BAD_GATEWAY;
             return ERROR;
         }
@@ -616,7 +623,9 @@ static unsigned request_resolve_done(struct selector_key * key){
         data->origin_addr_len = sizeof(storage);
         memcpy(&data->origin_addr,&storage,data->origin_addr_len);
         rl->resolve_info.qty--;
-      
+        char buff[50];
+        sockaddr_to_human(buff,50,(const struct sockaddr*)&data->origin_addr);
+      //  printf("me intento conectar a %s\n", buff);
 
         return connect_to_origin(storage.ss_family,key);
     }
@@ -629,10 +638,15 @@ finally:
 ////////////////////////////////////////////////////////////////////////////////
 
 static unsigned connect_to_origin(int origin_family,struct selector_key*key){
- 
     struct httpd *data = ATTACHMENT(key);
-    int origin_fd = data->origin_fd;
+  //  printf("connect to origin\n");
+    if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->client_fd, OP_NOOP)){
+        data->status = INTERNAL_SERVER_ERROR;
+        goto finally;
+    }
 
+    int origin_fd = data->origin_fd;
+  
     if(origin_fd != -1){
         // ya probe antes con otra ip
         close(origin_fd);
@@ -642,6 +656,7 @@ static unsigned connect_to_origin(int origin_family,struct selector_key*key){
     data->status = OK;
     unsigned ret = CONNECTING;
     origin_fd = socket(origin_family, SOCK_STREAM, IPPROTO_TCP);
+     // printf("origin_fd = %d\n", origin_fd);
     if (origin_fd < 0)
     {
         data->status = INTERNAL_SERVER_ERROR;
@@ -656,6 +671,7 @@ static unsigned connect_to_origin(int origin_family,struct selector_key*key){
     }
     if(connect(origin_fd,(const struct sockaddr*)&data->origin_addr,data->origin_addr_len) == -1){
         if(errno == EINPROGRESS){
+           // printf("einprogress\n");
             // se esta conectando
            // printf("Connect to origin EINPROGRESS origin_fd %d\n",origin_fd);
             // registro el origin_fd para escritura para que me avise cuando si conectó o falló conexión
@@ -713,7 +729,7 @@ static unsigned connecting_done(struct selector_key *key){
     if(getsockopt(connecting->origin_fd,SOL_SOCKET,SO_ERROR,&socket_error,&socket_error_len) == 0){
         if(socket_error == 0){
             // se conectó bien
-
+          //  printf("se conecto bien\n");
             // quiero leer del cliente
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->client_fd, OP_NOOP))
             {
@@ -733,16 +749,28 @@ static unsigned connecting_done(struct selector_key *key){
                 data->status = INTERNAL_SERVER_ERROR;
                 goto finally;
             }*/
-      
-            // hubo error en la conexión
-            data->status = errno_response(errno);
-            strcpy(data->log_data.status_code, error_responses[data->status].status);
-            //register_access(&data->log_data); //TODO preguntar si logear conexiones fallidas
-            ret = REQUEST_RESOLVE;
-            goto finally;
+         // printf("seteo cliente en OP_WRITE\n");
+          if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->client_fd, OP_WRITE))
+          {
+              data->status = INTERNAL_SERVER_ERROR;
+              goto finally;
+            }
+          //printf("seteo origin en op_noop\n");
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->origin_fd, OP_NOOP)){
+                data->status = INTERNAL_SERVER_ERROR;
+                goto finally;
+            }
+        //  printf("socket error  != 0\n");
+          // hubo error en la conexión
+          data->status = errno_response(errno);
+          strcpy(data->log_data.status_code, error_responses[data->status].status);
+          //register_access(&data->log_data); //TODO preguntar si logear conexiones fallidas
+          ret = REQUEST_RESOLVE;
+          goto finally;
 
         }
     }else{
+       // printf("error getsockopt\n");
         data->status = INTERNAL_SERVER_ERROR;
         goto finally;
     }
@@ -1293,6 +1321,7 @@ static void response_message_on_departure(const unsigned state, struct selector_
 ////////////////////////////////////////////////////////////////////////////////
 
 static void error_init(const unsigned state,struct selector_key * key){
+  //  printf("error init\n");
     assert(state == ERROR);
     struct httpd *data = ATTACHMENT(key);
 
@@ -1323,7 +1352,7 @@ static void error_init(const unsigned state,struct selector_key * key){
 }
 
 static unsigned error_write(struct selector_key* key){
-
+    //printf("error write\n");
     struct httpd *data = ATTACHMENT(key);
 
     struct response_line_st* rl = &(data->origin.response_line);
@@ -1340,7 +1369,7 @@ static unsigned error_write(struct selector_key* key){
     }else{
         ret = DONE;
     }
-
+   // printf("termine error write\n");
     return ret;
 }
 
