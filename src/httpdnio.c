@@ -1101,7 +1101,7 @@ static unsigned request_message_write(struct selector_key* key){
     if(data->status != OK){
         ret = ERROR;
     }else if(done){
-            printf("request message done\n");
+           
         ret = REQUEST_BODY;
     }
     return ret;
@@ -1120,7 +1120,7 @@ static void request_message_on_departure(const unsigned state, struct selector_k
 // REQUEST BODY
 ////////////////////////////////////////////////////////////////////////////////
 static bool send_body(int read_fd, int write_fd, buffer *rb, struct request_message_st *rm, fd_selector s, error_status_code * status){
-    printf("send body\n");
+  
     bool done = false;
     size_t rbytes;
     uint8_t *  write_ptr = buffer_read_ptr(rb, &rbytes);
@@ -1164,18 +1164,18 @@ finally:
 }
 
 static void request_body_init(const unsigned state, struct selector_key *key){
-        printf("request body init\n");
+      
     assert(state == REQUEST_BODY);
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
     if(rm->content_lengt > 0){
-        printf("content > 0\n");
+       
         if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
         {
                 abort();
         }
         if(buffer_can_read(rm->rb)){
-            printf("puedo leer del rb\n");
+         
             // ademas de la request line, se escribieron headers y/o body en el buffer de lectura del cliente
             if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_WRITE))
             {
@@ -1183,7 +1183,7 @@ static void request_body_init(const unsigned state, struct selector_key *key){
             }   
         }
     }else{
-        printf("request content == 0\n");
+      
         if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_WRITE))
         {
             abort();
@@ -1193,7 +1193,7 @@ static void request_body_init(const unsigned state, struct selector_key *key){
 
 }
 static unsigned request_body_read(struct selector_key *key){
-       printf("request body read\n");
+    
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
     buffer * client_rb = rm->rb;
@@ -1211,7 +1211,6 @@ static unsigned request_body_read(struct selector_key *key){
 }
 
 static unsigned request_body_write(struct selector_key *key){
-       printf("request body write\n");
   struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
 
@@ -1231,7 +1230,7 @@ static unsigned request_body_write(struct selector_key *key){
         {
             abort();
         }  
-        printf("write content == 0\n");
+      
         ret = RESPONSE_LINE_READ;
     }
    
@@ -1245,7 +1244,7 @@ static unsigned request_body_write(struct selector_key *key){
 ////////////////////////////////////////////////////////////////////////////////
 
 static void response_line_read_init(const unsigned state,struct selector_key *key){
-    printf("response line init\n");
+  
     assert(state == RESPONSE_LINE_READ);
     struct httpd *data = ATTACHMENT(key);
     struct response_line_st* rl = &(data->origin.response_line);
@@ -1264,7 +1263,7 @@ static void response_line_read_init(const unsigned state,struct selector_key *ke
 static unsigned response_line_read(struct selector_key *key)
 {
    
- printf("response line read\n");
+
     struct response_line_st* rl = &(ATTACHMENT(key)->origin.response_line);
     struct httpd *data = ATTACHMENT(key);
 
@@ -1321,7 +1320,7 @@ static void response_line_read_on_departure(const unsigned state, struct selecto
 ////////////////////////////////////////////////////////////////////////////////
 
 static void response_line_write_init(const unsigned state,struct selector_key *key){
-   printf("response line write init\n");
+
     struct httpd *data = ATTACHMENT(key);
     assert(state == RESPONSE_LINE_WRITE && data->origin_fd != -1);
     struct response_line_st* rl = &(data->origin.response_line);
@@ -1356,7 +1355,7 @@ static void response_line_write_on_departure(const unsigned state,struct selecto
 }
 
 static unsigned response_line_write(struct selector_key *key){
-     printf("response line write\n");
+
     struct httpd *data = ATTACHMENT(key);
     data->status = OK;
     assert(data->client_fd == key->fd);
@@ -1386,7 +1385,7 @@ static unsigned response_line_write(struct selector_key *key){
 ////////////////////////////////////////////////////////////////////////////////
 
 static void response_message_init(const unsigned state,struct selector_key *key){
-    printf("response message init\n");
+  
     assert(state == RESPONSE_MESSAGE);
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.response_message;
@@ -1422,7 +1421,7 @@ static unsigned response_message_write(struct selector_key* key){
         ret = ERROR;
         goto finally;
     }else if(done){
-        printf("response message done\n");
+     
         ret = RESPONSE_BODY;
     }
 
@@ -1475,7 +1474,7 @@ static void response_message_on_departure(const unsigned state, struct selector_
 ////////////////////////////////////////////////////////////////////////////////
 
 static void response_body_init(const unsigned state, struct selector_key *key){
-    printf("response body init\n");
+
     assert(state == RESPONSE_BODY);
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.response_message;
@@ -1501,7 +1500,7 @@ static void response_body_init(const unsigned state, struct selector_key *key){
    
 }
 static unsigned response_body_read(struct selector_key *key){
-    printf("response body read\n");
+   
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.response_message;
     buffer * origin_rb = rm->rb;
@@ -1519,7 +1518,7 @@ static unsigned response_body_read(struct selector_key *key){
 }
 
 static unsigned response_body_write(struct selector_key *key){
-    printf("resposne body write\n");
+ 
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.response_message;
 
