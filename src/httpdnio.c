@@ -71,10 +71,21 @@ static unsigned request_message_write(struct selector_key *key);
 static unsigned request_message_read(struct selector_key *key);
 static void request_message_on_departure(const unsigned state, struct selector_key *key);
 
+static void request_body_init(const unsigned state, struct selector_key *key);
+static unsigned request_body_write(struct selector_key *key);
+static unsigned request_body_read(struct selector_key *key);
+
+
+
 static void response_message_init(const unsigned state,struct selector_key *key);
 static unsigned response_message_read(struct selector_key* key);
 static unsigned response_message_write(struct selector_key* key);
 static void response_message_on_departure(const unsigned state, struct selector_key *key);
+
+static void response_body_init(const unsigned state, struct selector_key *key);
+static unsigned response_body_write(struct selector_key *key);
+static unsigned response_body_read(struct selector_key *key);
+
 
 static void error_init(const unsigned state,struct selector_key * key);
 static unsigned error_write(struct selector_key* key);
@@ -93,9 +104,11 @@ enum httpd_state {
     CONNECTING,
     REQUEST_LINE_WRITE,
     REQUEST_MESSAGE,
+    REQUEST_BODY,
     RESPONSE_LINE_READ,
     RESPONSE_LINE_WRITE,
     RESPONSE_MESSAGE,
+    RESPONSE_BODY,
     COPY,
     // estados terminales
     DONE,
@@ -144,6 +157,7 @@ struct response_line_st {
 struct request_message_st{
     buffer * rb;
     struct request_message_parser parser;
+    long content_lengt;
 };
 
 
@@ -243,6 +257,11 @@ static const struct state_definition client_statbl[] = {
         .on_write_ready = request_message_write,
         .on_departure = request_message_on_departure,
      },
+    {.state = REQUEST_BODY,
+        .on_arrival = request_body_init,
+        .on_read_ready = request_body_read,
+        .on_write_ready = request_body_write,
+     },
     {
         .state = RESPONSE_LINE_READ,
         .on_arrival = response_line_read_init,
@@ -261,6 +280,12 @@ static const struct state_definition client_statbl[] = {
         .on_read_ready = response_message_read,
         .on_write_ready = response_message_write,
         .on_departure = response_message_on_departure,
+     },
+    {
+        .state = RESPONSE_BODY,
+        .on_arrival = response_body_init,
+        .on_read_ready = response_body_read,
+        .on_write_ready = response_body_write,
      },
     {
         .state = COPY,
@@ -926,14 +951,13 @@ static void request_message_init(const unsigned state,struct selector_key *key){
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
     rm->rb = &data->client_read;
-    request_message_parser_init(&rm->parser,6,true); // <= cantidad de headers a tener en cuenta, podria mejorarse la interfaz para que no sea necesario pasarselo ya que siempre se me olvida
+    request_message_parser_init(&rm->parser,5,true); // <= cantidad de headers a tener en cuenta, podria mejorarse la interfaz para que no sea necesario pasarselo ya que siempre se me olvida
        
     // El parser de header es case insensitive
     add_header(&rm->parser, "Host", HEADER_REPLACE,get_origin_string(data->log_data.origin_addr,data->log_data.origin_addr_type,data->log_data.origin_port), NULL);
     add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
     add_header(&rm->parser, "Transfer-Encoding", HEADER_IGNORE,NULL, transfer_encoding_on_value_end);
     add_header(&rm->parser, "Connection", HEADER_IGNORE,NULL, NULL);
-    add_header(&rm->parser, "Proxy-Authorization",  (HEADER_STORAGE | HEADER_SEND),NULL, decode_credentials);
     add_header(&rm->parser, "Authorization",  (HEADER_STORAGE | HEADER_SEND),NULL, decode_credentials);
 
     if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
@@ -1015,6 +1039,7 @@ static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_
         if(*status != OK){
             goto finally;
         }
+
     }
         
   
@@ -1076,7 +1101,8 @@ static unsigned request_message_write(struct selector_key* key){
     if(data->status != OK){
         ret = ERROR;
     }else if(done){
-        ret = RESPONSE_LINE_READ;
+            printf("request message done\n");
+        ret = REQUEST_BODY;
     }
     return ret;
 }
@@ -1085,9 +1111,128 @@ static void request_message_on_departure(const unsigned state, struct selector_k
     assert(state == REQUEST_MESSAGE);
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
+    rm->content_lengt = rm->parser.content_lenght;
     request_message_parser_destroy(&rm->parser);
  
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// REQUEST BODY
+////////////////////////////////////////////////////////////////////////////////
+static bool send_body(int read_fd, int write_fd, buffer *rb, struct request_message_st *rm, fd_selector s, error_status_code * status){
+   bool done = false;
+    size_t rbytes;
+    uint8_t *  write_ptr = buffer_read_ptr(rb, &rbytes);
+    if(rbytes > rm->content_lengt){
+        rbytes = rm->content_lengt;
+    }
+    ssize_t numBytesWritten = send(write_fd,write_ptr, rbytes,MSG_NOSIGNAL);
+    if(numBytesWritten <= 0){
+
+        *status = INTERNAL_SERVER_ERROR; // quizas es otra
+        goto finally;
+    }
+    rm->content_lengt -= numBytesWritten;
+    buffer_read_adv(rb, numBytesWritten);
+    if(rm->content_lengt == 0){
+        done = true;
+    }
+    
+    if(!done){
+      
+        if(buffer_can_write(rb)){   
+            if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_READ))
+            {
+                *status = INTERNAL_SERVER_ERROR;
+                goto finally;
+            }
+        }
+        if(!buffer_can_read(rb)){   
+            if (SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP))
+            {
+                 *status = INTERNAL_SERVER_ERROR;
+                goto finally;
+            }
+        }
+    }else if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP) || SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP)){
+            *status = INTERNAL_SERVER_ERROR;
+            goto finally;
+    }
+finally:
+    return done;
+}
+
+static void request_body_init(const unsigned state, struct selector_key *key){
+        printf("request body init\n");
+    assert(state == REQUEST_BODY);
+    struct httpd *data = ATTACHMENT(key);
+    struct request_message_st *rm = &data->client.request_message;
+    if(rm->content_lengt > 0){
+        printf("content > 0\n");
+        if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
+        {
+                abort();
+        }
+        if(buffer_can_read(rm->rb)){
+            printf("puedo leer del rb\n");
+            // ademas de la request line, se escribieron headers y/o body en el buffer de lectura del cliente
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_WRITE))
+            {
+                abort();
+            }   
+        }
+    }else{
+        printf("content == 0\n");
+        if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_WRITE))
+        {
+            abort();
+        }  
+    }   
+
+
+}
+static unsigned request_body_read(struct selector_key *key){
+       printf("request body read\n");
+    struct httpd *data = ATTACHMENT(key);
+    struct request_message_st *rm = &data->client.request_message;
+    buffer * client_rb = rm->rb;
+    data->status = OK;
+    unsigned ret = REQUEST_BODY;
+    bool done = read_message(data->client_fd, data->origin_fd, client_rb, key->s,&data->status);
+    if (data->status != OK)
+    {
+        ret = ERROR;
+    }else if(done){
+        ret = DONE;
+    }
+    
+    return ret;
+}
+
+static unsigned request_body_write(struct selector_key *key){
+       printf("request body write\n");
+  struct httpd *data = ATTACHMENT(key);
+    struct request_message_st *rm = &data->client.request_message;
+
+    buffer *client_rb = rm->rb;
+    data->status = OK;
+    unsigned ret = REQUEST_BODY;
+    if(rm->content_lengt > 0){
+           bool done = send_body(data->client_fd, data->origin_fd, client_rb,rm,key->s,&data->status);
+        if(data->status != OK){
+            ret = ERROR;
+        }else if(done){
+            ret = RESPONSE_LINE_READ;
+        }
+    }else{
+        printf("write content == 0\n");
+        ret = RESPONSE_LINE_READ;
+    }
+   
+ 
+    return ret;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // RESPONSE LINE
@@ -1270,7 +1415,8 @@ static unsigned response_message_write(struct selector_key* key){
         ret = ERROR;
         goto finally;
     }else if(done){
-        ret = DONE;
+        printf("response message done\n");
+        ret = RESPONSE_BODY;
     }
 
     return ret;
@@ -1311,8 +1457,92 @@ static void response_message_on_departure(const unsigned state, struct selector_
     assert(state == RESPONSE_MESSAGE);
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.response_message;
+    rm->content_lengt = rm->parser.content_lenght;
     request_message_parser_destroy(&rm->parser);
  
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// RESPONSE BODY
+////////////////////////////////////////////////////////////////////////////////
+
+static void response_body_init(const unsigned state, struct selector_key *key){
+    printf("response body init\n");
+    assert(state == RESPONSE_BODY);
+    struct httpd *data = ATTACHMENT(key);
+    struct request_message_st *rm = &data->origin.response_message;
+    if(rm->content_lengt > 0){
+        if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_READ))
+        {
+                abort();
+        }
+        if(buffer_can_read(rm->rb)){
+
+            // ademas de la request line, se escribieron headers y/o body en el buffer de lectura del cliente
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_WRITE))
+            {
+                abort();
+            }
+        }
+    }else{
+        if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_WRITE))
+        {
+            abort();
+        }
+    }
+   
+}
+static unsigned response_body_read(struct selector_key *key){
+    printf("response body read\n");
+    struct httpd *data = ATTACHMENT(key);
+    struct request_message_st *rm = &data->origin.response_message;
+    buffer * origin_rb = rm->rb;
+    data->status = OK;
+    unsigned ret = RESPONSE_BODY;
+    bool done = read_message(data->origin_fd, data->client_fd, origin_rb, key->s,&data->status);
+    if (data->status != OK)
+    {
+        ret = ERROR;
+    }else if(done){
+        ret = RESPONSE_BODY;
+    }
+    
+    return ret;
+}
+
+static unsigned response_body_write(struct selector_key *key){
+    printf("resposne body write\n");
+    struct httpd *data = ATTACHMENT(key);
+    struct request_message_st *rm = &data->origin.response_message;
+
+    buffer *origin_rb = rm->rb;
+    data->status = OK;
+    unsigned ret = REQUEST_BODY;
+    if(rm->content_lengt > 0){
+        bool done = send_body(data->origin_fd, data->client_fd, origin_rb,rm,key->s,&data->status);
+        if(data->status != OK){
+            ret = ERROR;
+        }else if(done){
+            ret = DONE;
+        }
+        return ret;
+    }else{
+        ret = DONE;
+    }
+
+    return ret;
+
+    finally:
+    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
+    {
+        abort();
+    }
+    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
+    {
+        abort();
+    }
+    return ret;
 }
 
 
@@ -1381,6 +1611,10 @@ static void error_on_departure(const unsigned state, struct selector_key *key){
     free(rl->data.data_to_send);
 }
 
+
+
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // COPY
 ////////////////////////////////////////////////////////////////////////////////
@@ -1441,7 +1675,6 @@ static void selector_set_new_interest(struct copy_st* copy,fd_selector s){
 }
 static unsigned copy_read(struct selector_key *key){
     struct copy_st *copy = get_copy_from_key(key);
-    struct httpd *data = ATTACHMENT(key);
 
     size_t wbytes;
     /* quiero escribir en el read buffer de copy */
@@ -1484,7 +1717,6 @@ static unsigned copy_read(struct selector_key *key){
 static unsigned copy_write(struct selector_key *key){
 
     struct copy_st *copy = get_copy_from_key(key);
-    struct httpd *data = ATTACHMENT(key);
 
     size_t rbytes;
     /* quiero leer en el write buffer de copy */

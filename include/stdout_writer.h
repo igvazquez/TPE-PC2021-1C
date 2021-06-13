@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include "../include/selector.h"
 #include "../include/buffer.h"
-#define  STDOUT_BUFFER_SIZE 25500 // 510 clientes * 50 caracteres
+#define  STDOUT_BUFFER_SIZE 51000 // 510 clientes * 100 caracteres
 
 #define  STDOUT_FILENO 1
 
