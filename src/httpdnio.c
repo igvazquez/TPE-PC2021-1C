@@ -1120,7 +1120,8 @@ static void request_message_on_departure(const unsigned state, struct selector_k
 // REQUEST BODY
 ////////////////////////////////////////////////////////////////////////////////
 static bool send_body(int read_fd, int write_fd, buffer *rb, struct request_message_st *rm, fd_selector s, error_status_code * status){
-   bool done = false;
+    printf("send body\n");
+    bool done = false;
     size_t rbytes;
     uint8_t *  write_ptr = buffer_read_ptr(rb, &rbytes);
     if(rbytes > rm->content_lengt){
@@ -1182,7 +1183,7 @@ static void request_body_init(const unsigned state, struct selector_key *key){
             }   
         }
     }else{
-        printf("content == 0\n");
+        printf("request content == 0\n");
         if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_WRITE))
         {
             abort();
@@ -1225,6 +1226,11 @@ static unsigned request_body_write(struct selector_key *key){
             ret = RESPONSE_LINE_READ;
         }
     }else{
+
+        if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
+        {
+            abort();
+        }  
         printf("write content == 0\n");
         ret = RESPONSE_LINE_READ;
     }
@@ -1239,7 +1245,7 @@ static unsigned request_body_write(struct selector_key *key){
 ////////////////////////////////////////////////////////////////////////////////
 
 static void response_line_read_init(const unsigned state,struct selector_key *key){
-   
+    printf("response line init\n");
     assert(state == RESPONSE_LINE_READ);
     struct httpd *data = ATTACHMENT(key);
     struct response_line_st* rl = &(data->origin.response_line);
@@ -1258,7 +1264,7 @@ static void response_line_read_init(const unsigned state,struct selector_key *ke
 static unsigned response_line_read(struct selector_key *key)
 {
    
-
+ printf("response line read\n");
     struct response_line_st* rl = &(ATTACHMENT(key)->origin.response_line);
     struct httpd *data = ATTACHMENT(key);
 
@@ -1315,7 +1321,7 @@ static void response_line_read_on_departure(const unsigned state, struct selecto
 ////////////////////////////////////////////////////////////////////////////////
 
 static void response_line_write_init(const unsigned state,struct selector_key *key){
-  
+   printf("response line write init\n");
     struct httpd *data = ATTACHMENT(key);
     assert(state == RESPONSE_LINE_WRITE && data->origin_fd != -1);
     struct response_line_st* rl = &(data->origin.response_line);
@@ -1350,6 +1356,7 @@ static void response_line_write_on_departure(const unsigned state,struct selecto
 }
 
 static unsigned response_line_write(struct selector_key *key){
+     printf("response line write\n");
     struct httpd *data = ATTACHMENT(key);
     data->status = OK;
     assert(data->client_fd == key->fd);
@@ -1379,7 +1386,7 @@ static unsigned response_line_write(struct selector_key *key){
 ////////////////////////////////////////////////////////////////////////////////
 
 static void response_message_init(const unsigned state,struct selector_key *key){
- 
+    printf("response message init\n");
     assert(state == RESPONSE_MESSAGE);
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.response_message;
@@ -1528,6 +1535,10 @@ static unsigned response_body_write(struct selector_key *key){
         }
         return ret;
     }else{
+        if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
+        {
+            abort();
+        }  
         ret = DONE;
     }
 

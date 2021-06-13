@@ -388,16 +388,15 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
             }
             break;
         case RM_BODY_START:
-           /* if(parser->save_data){
+            if(parser->save_data){
                 if((*status = save_data(e, parser)) != OK){
                     return true;
                 }
             }
        
-            if(parser->content_lenght == 0){
+            /*if(parser->content_lenght == 0){
                 return true;
             }*/
-           printf("llegue a body\n");
            return true;
            break;
         case RM_BODY:
