@@ -180,4 +180,7 @@ void request_line_parser_init(struct request_line_parser *parser);
 bool request_line_parser_consume(buffer *buffer, request_line_parser *parser, error_status_code * status);
 bool request_line_is_done(enum request_line_event_type type, error_status_code *status);
 void request_line_parser_reset(struct request_line_parser *p);
+bool is_connect(char* method);
+bool is_options(char* method);
+
 #endif

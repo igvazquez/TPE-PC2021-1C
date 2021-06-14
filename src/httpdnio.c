@@ -28,14 +28,13 @@
 #include <stdbool.h>
 
 /**  tamaño del buffer de read y write **/
-#define MAX_BUFF_SIZE 4*1024
+#define MAX_BUFF_SIZE 16*1024
 
 #define N(x) (sizeof(x)/sizeof((x)[0]))
 
 /** obtiene el struct (httpd *) desde la llave de selección  */
 #define ATTACHMENT(key) ( (struct httpd *)(key)->data)
 
-#define WRITE_MESSAGE_EXTRA_SPACE 64
 
 static void httpd_read   (struct selector_key *key);
 static void httpd_write  (struct selector_key *key);
@@ -369,15 +368,7 @@ httpd_destroy(struct httpd *s) {
     if(s == NULL) {
         // nada para hacer
     } else if(s->references == 1) {
-       
-           /* if(pool_size < max_pool) {
-                s->next = pool;
-                pool    = s;
-                pool_size++;
-            } else {
-                socks5_destroy_(s);
-            }*/
-       
+  
            free_state(s);
     } else {
         s->references -= 1;
@@ -388,7 +379,7 @@ httpd_destroy(struct httpd *s) {
 
 static void
 httpd_close(struct selector_key *key) {
-   //  printf("httpd_close\n");
+
    httpd_destroy(ATTACHMENT(key));
 }
 static void
@@ -397,8 +388,7 @@ httpd_done(struct selector_key* key) {
         ATTACHMENT(key)->client_fd,
         ATTACHMENT(key)->origin_fd,
     };
-    //printf("httpd_done\n");
-    // printf("Cierro conexión entre cliente %d y origin %d\n", fds[0], fds[1]);
+ 
     for(unsigned i = 0; i < N(fds); i++) {
         if(fds[i] != -1) {
             if(SELECTOR_SUCCESS != selector_unregister_fd(key->s, fds[i])) {
@@ -467,9 +457,8 @@ httpd_passive_accept(struct selector_key *key) {
     state->log_data.client_addr = &state->client_addr;
     
     // no quiero leer desde el cliente hasta que me conecte con el origen
-   if(SELECTOR_SUCCESS != selector_register(key->s, client, &httpd_handler,
-                                              OP_READ, state)) {
-        goto fail;
+   if(SELECTOR_SUCCESS != selector_register(key->s, client, &httpd_handler,OP_READ, state)) {
+        abort();
     }
 
     return;
@@ -519,8 +508,7 @@ static unsigned request_line_read(struct selector_key *key)
 
                 if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->client_fd, OP_NOOP))
                 {
-                    data->status = INTERNAL_SERVER_ERROR;
-                    goto finally;
+                     abort();
                 }
 
                 //proceso la request line
@@ -534,6 +522,7 @@ static unsigned request_line_read(struct selector_key *key)
     {
         ret = ERROR;
     }
+    return ret;
 
 finally:
     return data->status != OK ? ERROR : ret;
@@ -542,7 +531,7 @@ finally:
 static unsigned request_line_process(struct request_line_st * rl,struct selector_key * key){
     unsigned ret = ERROR;
 
-    //printf("line process\n");
+
     struct httpd *data = ATTACHMENT(key);
 
     switch (rl->request_line_data.request_target.host_type)
@@ -573,14 +562,13 @@ static unsigned request_line_process(struct request_line_st * rl,struct selector
     case domain_addr_t:
         if (resolve(rl->request_line_data.request_target.host.domain, key->s, data->client_fd, &rl->resolve_info) != RESOLVE_ERROR)
         {
-           // printf("termina resolve bie\n");
+      
             ret = REQUEST_RESOLVE;
             memcpy(data->log_data.origin_addr.domain, rl->request_line_data.request_target.host.domain ,strlen((char*)rl->request_line_data.request_target.host.domain)+1);
             data->log_data.origin_addr_type = domain_addr_t;
-          //  printf("seteo client en OP_NOOP\n");
+    
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->client_fd, OP_NOOP)){
-                data->status = INTERNAL_SERVER_ERROR;
-                ret = ERROR;
+                 abort();
             }
         }
         else
@@ -614,22 +602,22 @@ static void request_line_read_on_departure(const unsigned state,struct selector_
 
 static unsigned request_resolve_done(struct selector_key * key){
     struct httpd *data = ATTACHMENT(key);
-   // printf("resolve done\n");
+  
     struct request_line_st * rl = &data->client.request_line;
-   // printf("en resolve done soy %d\n", key->fd);
+  
     if(rl->resolve_info.status != RESOLVE_OK){
         data->status = BAD_GATEWAY;
         return ERROR;
     }
     if(rl->resolve_info.qty == 0){
-        //printf("qty == 0\n");
+       
         if(rl->resolve_info.type == IPV4){
-            //printf(" era ipv4\n");
+         
             rl->resolve_info.type = IPV6;
           
             return request_line_process(rl,key);
         }else{
-           // printf(" era ipv6\n");
+    
             data->status = BAD_GATEWAY;
             return ERROR;
         }
@@ -650,7 +638,7 @@ static unsigned request_resolve_done(struct selector_key * key){
         rl->resolve_info.qty--;
         char buff[50];
         sockaddr_to_human(buff,50,(const struct sockaddr*)&data->origin_addr);
-      //  printf("me intento conectar a %s\n", buff);
+   
 
         return connect_to_origin(storage.ss_family,key);
     }
@@ -664,10 +652,9 @@ finally:
 
 static unsigned connect_to_origin(int origin_family,struct selector_key*key){
     struct httpd *data = ATTACHMENT(key);
-  //  printf("connect to origin\n");
+
     if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->client_fd, OP_NOOP)){
-        data->status = INTERNAL_SERVER_ERROR;
-        goto finally;
+         abort();
     }
 
     int origin_fd = data->origin_fd;
@@ -681,13 +668,13 @@ static unsigned connect_to_origin(int origin_family,struct selector_key*key){
     data->status = OK;
     unsigned ret = CONNECTING;
     origin_fd = socket(origin_family, SOCK_STREAM, IPPROTO_TCP);
-     // printf("origin_fd = %d\n", origin_fd);
+
     if (origin_fd < 0)
     {
         data->status = INTERNAL_SERVER_ERROR;
         goto finally;
     }
-  //  printf("Origin fd: %d\n",origin_fd);
+ 
     data->origin_fd = origin_fd;
     
     if(selector_fd_set_nio(origin_fd) == -1){
@@ -696,9 +683,9 @@ static unsigned connect_to_origin(int origin_family,struct selector_key*key){
     }
     if(connect(origin_fd,(const struct sockaddr*)&data->origin_addr,data->origin_addr_len) == -1){
         if(errno == EINPROGRESS){
-           // printf("einprogress\n");
+        
             // se esta conectando
-           // printf("Connect to origin EINPROGRESS origin_fd %d\n",origin_fd);
+        
             // registro el origin_fd para escritura para que me avise cuando si conectó o falló conexión
             data->references += 1;
             if(selector_register(key->s, origin_fd, &httpd_handler, OP_WRITE, data) != SELECTOR_SUCCESS){
@@ -722,12 +709,6 @@ static void connecting_init(const unsigned state,struct selector_key *key){
     connecting->origin_fd = ATTACHMENT(key)->origin_fd;
 }
 
-static bool is_connect(char* method){
-    return stricmp("CONNECT", method) == 0;
-}
-static bool is_options(char* method){
-    return stricmp("OPTIONS", method) == 0;
-}
 
 static enum httpd_state get_next_state(struct selector_key* key,char * method){
     if(is_connect(method)){
@@ -743,7 +724,7 @@ static enum httpd_state get_next_state(struct selector_key* key,char * method){
 static unsigned connecting_done(struct selector_key *key){
 
     unsigned ret = ERROR;
-   // printf("Connecting done\n");
+
     int socket_error;
     struct httpd *data = ATTACHMENT(key);
     socklen_t socket_error_len = sizeof(socket_error);
@@ -754,48 +735,39 @@ static unsigned connecting_done(struct selector_key *key){
     if(getsockopt(connecting->origin_fd,SOL_SOCKET,SO_ERROR,&socket_error,&socket_error_len) == 0){
         if(socket_error == 0){
             // se conectó bien
-          //  printf("se conecto bien\n");
+         
             // quiero leer del cliente
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->client_fd, OP_NOOP))
             {
-                data->status = INTERNAL_SERVER_ERROR;
-                goto finally;
+                abort();
             }
-       
+
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->origin_fd, OP_NOOP)){
-                data->status = INTERNAL_SERVER_ERROR;
-                goto finally;
+                abort();
             }
 
             ret = get_next_state(key,(char * )ATTACHMENT(key)->client.request_line.request_line_data.method);
             goto finally;
         }else{
-          /*  if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->client_fd, OP_NOOP)){
-                data->status = INTERNAL_SERVER_ERROR;
-                goto finally;
-            }*/
-         // printf("seteo cliente en OP_WRITE\n");
+  
           if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->client_fd, OP_WRITE))
           {
-              data->status = INTERNAL_SERVER_ERROR;
-              goto finally;
+              abort();
             }
-          //printf("seteo origin en op_noop\n");
+
             if (SELECTOR_SUCCESS != selector_set_interest(key->s, connecting->origin_fd, OP_NOOP)){
-                data->status = INTERNAL_SERVER_ERROR;
-                goto finally;
+                abort();
             }
-        //  printf("socket error  != 0\n");
           // hubo error en la conexión
           data->status = errno_response(errno);
           strcpy(data->log_data.status_code, error_responses[data->status].status);
-          //register_access(&data->log_data); //TODO preguntar si logear conexiones fallidas
+          //register_access(&data->log_data); // Decidimos no registrar conexiones fallidas
           ret = REQUEST_RESOLVE;
           goto finally;
 
         }
     }else{
-       // printf("error getsockopt\n");
+ 
         data->status = INTERNAL_SERVER_ERROR;
         goto finally;
     }
@@ -813,17 +785,20 @@ static void request_line_write_init(const unsigned state,struct selector_key *ke
     struct httpd *data = ATTACHMENT(key);
     assert(state == REQUEST_LINE_WRITE && data->origin_fd != -1);
     struct request_line_st* rl = &(data->client.request_line);
-
-    size_t method_len = strlen((char*)rl->request_line_data.method);
-    char *origin_form = is_options((char*)rl->request_line_data.method) ? "*" : (char*)rl->request_line_data.request_target.origin_form;
- 
+    char * method = (char*)rl->request_line_data.method;
+    size_t method_len = strlen(method);
+    char *origin_form = (char *)rl->request_line_data.request_target.origin_form;
     size_t origin_form_len = strlen(origin_form);
   
+    if(is_options(method) && origin_form_len == 0){
+        origin_form = "*";
+        origin_form_len = 1;
+    }
 
     rl->data.data_to_send_len = method_len + origin_form_len + 12;
     rl->data.data_to_send = (uint8_t*)malloc(rl->data.data_to_send_len+1);
  
-    if(-1 == sprintf((char*)rl->data.data_to_send,"%s %s HTTP/%d.%d\r\n",(char*)rl->request_line_data.method,origin_form,VERSION_MAJOR,VERSION_MINOR)){
+    if(-1 == sprintf((char*)rl->data.data_to_send,"%s %s HTTP/%d.%d\r\n",method,origin_form,VERSION_MAJOR,VERSION_MINOR)){
         abort();
     }
     rl->data.data_to_send[rl->data.data_to_send_len] = '\0';
@@ -870,14 +845,12 @@ static bool send_buffer(int read_fd,int write_fd, buffer *b,fd_selector s, struc
   
             if (read_fd > -1 && SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
             {
-                *error = true;
-                goto finally;
+                 abort();
             }
 
             if (write_fd > -1 && SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP))
             {
-                *error = true;
-                goto finally;
+                 abort();
             }
             done = true;
         }
@@ -987,15 +960,13 @@ static bool read_message(int read_fd,int write_fd,buffer* rb,fd_selector s, erro
           
             if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
             {
-                *status = INTERNAL_SERVER_ERROR;
-                goto finally;
+                abort();
             }
         }
            
         if (SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_WRITE))
         {
-            *status = INTERNAL_SERVER_ERROR;
-            goto finally;
+            abort();
         }
     }else if(numBytesRead <0){
         *status = INTERNAL_SERVER_ERROR;
@@ -1003,8 +974,7 @@ static bool read_message(int read_fd,int write_fd,buffer* rb,fd_selector s, erro
     }else{
         if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
         {
-                 *status = INTERNAL_SERVER_ERROR;
-                goto finally;
+            abort();
         }
         done = true;
     }
@@ -1077,29 +1047,25 @@ static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_
          
             if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_READ))
             {
-                *status = INTERNAL_SERVER_ERROR;
-                goto finally;
+                 abort();
             }
         }
         if(!buffer_can_read(rb)){
            
             if (SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP))
             {
-                 *status = INTERNAL_SERVER_ERROR;
-                goto finally;
+                 abort();
             }
         }
     }else{
-        printf("done = true \n");
+     
         if (SELECTOR_SUCCESS != selector_set_interest(s, write_fd, OP_NOOP))
         {
-            *status = INTERNAL_SERVER_ERROR;
-            goto finally;
+            abort();
         }
         if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
         {
-            *status = INTERNAL_SERVER_ERROR;
-            goto finally;
+            abort();
         }
     }
     
@@ -1125,7 +1091,7 @@ static unsigned request_message_write(struct selector_key* key){
     }
     else if (done)
     {
-        printf("request message write done = true voy a body\n");
+     
         ret = REQUEST_BODY;
     }
     return ret;
@@ -1180,20 +1146,17 @@ static bool send_body(int read_fd, int write_fd, buffer *rb, struct request_mess
         if(buffer_can_write(rb)){   
             if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_READ))
             {
-                *status = INTERNAL_SERVER_ERROR;
-                goto finally;
+               abort();
             }
         }
         if(!buffer_can_read(rb)){   
             if (SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP))
             {
-                 *status = INTERNAL_SERVER_ERROR;
-                goto finally;
+                abort();
             }
         }
     }else if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP) || SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP)){
-            *status = INTERNAL_SERVER_ERROR;
-            goto finally;
+           abort();
     }
 finally:
     return done;
@@ -1331,9 +1294,7 @@ static unsigned response_line_read(struct selector_key *key)
                 
                 if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
                 {
-                    data->status = INTERNAL_SERVER_ERROR;
-                    ret = ERROR;
-                    goto finally;
+                    abort();
                 }
                 strcpy(data->log_data.status_code, (char*)rl->response_line_data.status_code);
                 ret = RESPONSE_LINE_WRITE;
@@ -1609,7 +1570,7 @@ static unsigned response_body_write(struct selector_key *key){
 ////////////////////////////////////////////////////////////////////////////////
 
 static void error_init(const unsigned state,struct selector_key * key){
-  //  printf("error init\n");
+
     assert(state == ERROR);
     struct httpd *data = ATTACHMENT(key);
 
@@ -1640,7 +1601,7 @@ static void error_init(const unsigned state,struct selector_key * key){
 }
 
 static unsigned error_write(struct selector_key* key){
-    //printf("error write\n");
+
     struct httpd *data = ATTACHMENT(key);
 
     struct response_line_st* rl = &(data->origin.response_line);
@@ -1657,7 +1618,7 @@ static unsigned error_write(struct selector_key* key){
     }else{
         ret = DONE;
     }
-   // printf("termine error write\n");
+
     return ret;
 }
 
