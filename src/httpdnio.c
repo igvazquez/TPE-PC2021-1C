@@ -941,6 +941,7 @@ static void content_length_on_value_end(struct request_message_parser* parser,st
 static void transfer_encoding_on_value_end(struct request_message_parser* parser,struct  log_data*log_data,error_status_code * status){
     assert(parser != NULL && parser->current_detection != NULL);
     *status = NOT_IMPLEMENTED;
+  
 }
 
 
@@ -983,12 +984,14 @@ static bool read_message(int read_fd,int write_fd,buffer* rb,fd_selector s, erro
     {
         buffer_write_adv(rb, numBytesRead);
         if(!buffer_can_write(rb)){
+          
             if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
             {
                 *status = INTERNAL_SERVER_ERROR;
                 goto finally;
             }
         }
+           
         if (SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_WRITE))
         {
             *status = INTERNAL_SERVER_ERROR;
@@ -1011,7 +1014,7 @@ finally:
 }
 
 static unsigned request_message_read(struct selector_key* key){
-
+  
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
     buffer * client_rb = rm->rb;
@@ -1022,6 +1025,7 @@ static unsigned request_message_read(struct selector_key* key){
     {
         ret = ERROR;
     }else if(done){
+      
         ret = DONE;
     }
     
@@ -1041,11 +1045,12 @@ static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_
         }
 
     }
-        
-  
+
+ 
     if(parser->data_index > 0){
-    
+      
         ssize_t numBytesWritten = send(write_fd, parser->data, parser->data_index,MSG_NOSIGNAL);
+      
         if(numBytesWritten < 0){
     
             *status = INTERNAL_SERVER_ERROR;
@@ -1055,6 +1060,7 @@ static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_
             goto finally;
         }
         if((unsigned)numBytesWritten < parser->data_index){
+            
             // si se envió menos de lo que parseé, debo escribir lo que parseé demás devuelta en el buffer
            
             for (unsigned i = numBytesWritten-1; i <  parser->data_index-1; i++){
@@ -1062,29 +1068,41 @@ static bool send_message(int read_fd, int write_fd, buffer *rb, request_message_
             }
             buffer_write_adv(rb, parser->data_index - numBytesWritten);
         }
-   
+        
     }
     parser->data_index = 0;
     if(!done){
-      
-        if(buffer_can_write(rb)){   
+       
+        if(buffer_can_write(rb)){
+         
             if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_READ))
             {
                 *status = INTERNAL_SERVER_ERROR;
                 goto finally;
             }
         }
-        if(!buffer_can_read(rb)){   
+        if(!buffer_can_read(rb)){
+           
             if (SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP))
             {
                  *status = INTERNAL_SERVER_ERROR;
                 goto finally;
             }
         }
-    }else if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP) || SELECTOR_SUCCESS != selector_set_interest(s,write_fd, OP_NOOP)){
+    }else{
+        printf("done = true \n");
+        if (SELECTOR_SUCCESS != selector_set_interest(s, write_fd, OP_NOOP))
+        {
             *status = INTERNAL_SERVER_ERROR;
             goto finally;
+        }
+        if (SELECTOR_SUCCESS != selector_set_interest(s,read_fd, OP_NOOP))
+        {
+            *status = INTERNAL_SERVER_ERROR;
+            goto finally;
+        }
     }
+    
         
 
 finally:
@@ -1092,7 +1110,7 @@ finally:
 }
 
 static unsigned request_message_write(struct selector_key* key){
-
+ 
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
 
@@ -1107,9 +1125,10 @@ static unsigned request_message_write(struct selector_key* key){
     }
     else if (done)
     {
+        printf("request message write done = true voy a body\n");
         ret = REQUEST_BODY;
     }
-
+    return ret;
 finally:
     if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
     {
@@ -1412,7 +1431,8 @@ static void response_message_init(const unsigned state,struct selector_key *key)
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.response_message;
     rm->rb = &data->client_write;
-    request_message_parser_init(&rm->parser,1,true);
+    request_message_parser_init(&rm->parser,2,true);
+    add_header(&rm->parser, "Transfer-Encoding", HEADER_IGNORE,NULL, transfer_encoding_on_value_end);
     add_header(&rm->parser, "Content-Length", (HEADER_STORAGE | HEADER_SEND),NULL, content_length_on_value_end);
     
     if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_READ))
