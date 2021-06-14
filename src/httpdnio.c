@@ -28,7 +28,7 @@
 #include <stdbool.h>
 
 /**  tamaño del buffer de read y write **/
-#define MAX_BUFF_SIZE 8*1024
+#define MAX_BUFF_SIZE 4*1024
 
 #define N(x) (sizeof(x)/sizeof((x)[0]))
 
@@ -1100,9 +1100,24 @@ static unsigned request_message_write(struct selector_key* key){
     bool done = send_message(data->client_fd, data->origin_fd, client_rb, &rm->parser, key->s,&data->log_data,&data->status);
     if(data->status != OK){
         ret = ERROR;
-    }else if(done){
-            printf("request message done\n");
+        goto finally;
+    }
+    else if (done)
+    {
+        printf("key fd %d\n", key->fd);
+        printf("client fd %d\n", data->client_fd);
+        printf("request message done\n");
         ret = REQUEST_BODY;
+    }
+
+finally:
+    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
+    {
+        abort();
+    }
+    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
+    {
+        abort();
     }
     return ret;
 }
@@ -1128,7 +1143,9 @@ static bool send_body(int read_fd, int write_fd, buffer *rb, struct request_mess
         rbytes = rm->content_lengt;
     }
     ssize_t numBytesWritten = send(write_fd,write_ptr, rbytes,MSG_NOSIGNAL);
-    if(numBytesWritten <= 0){
+    printf("num bytes written =%d\n", numBytesWritten);
+    if (numBytesWritten <= 0)
+    {
 
         *status = INTERNAL_SERVER_ERROR; // quizas es otra
         goto finally;
@@ -1164,16 +1181,26 @@ finally:
 }
 
 static void request_body_init(const unsigned state, struct selector_key *key){
-        printf("request body init\n");
+    printf("request body init\n");
     assert(state == REQUEST_BODY);
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->client.request_message;
     if(rm->content_lengt > 0){
         printf("content > 0\n");
-        if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_READ))
+        size_t rbytes;
+        buffer_read_ptr(rm->rb,&rbytes);
+        printf("puedo leer %d  bytes \n", rbytes);
+        if (rbytes < rm->content_lengt)
         {
-                abort();
+            if(buffer_can_write(rm->rb)){
+                printf("puedo escribir del rb\n");
+                   if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->client_fd, OP_READ))
+                    {
+                       abort();
+                    }
+            }
         }
+
         if(buffer_can_read(rm->rb)){
             printf("puedo leer del rb\n");
             // ademas de la request line, se escribieron headers y/o body en el buffer de lectura del cliente
@@ -1195,6 +1222,8 @@ static void request_body_init(const unsigned state, struct selector_key *key){
 static unsigned request_body_read(struct selector_key *key){
        printf("request body read\n");
     struct httpd *data = ATTACHMENT(key);
+    printf("key fd %d\n", key->fd);
+    printf("client fd %d\n", data->client_fd);
     struct request_message_st *rm = &data->client.request_message;
     buffer * client_rb = rm->rb;
     data->status = OK;
@@ -1213,6 +1242,8 @@ static unsigned request_body_read(struct selector_key *key){
 static unsigned request_body_write(struct selector_key *key){
        printf("request body write\n");
   struct httpd *data = ATTACHMENT(key);
+    printf("key fd %d\n", key->fd);
+    printf("client fd %d\n", data->client_fd);
     struct request_message_st *rm = &data->client.request_message;
 
     buffer *client_rb = rm->rb;
@@ -1222,9 +1253,18 @@ static unsigned request_body_write(struct selector_key *key){
            bool done = send_body(data->client_fd, data->origin_fd, client_rb,rm,key->s,&data->status);
         if(data->status != OK){
             ret = ERROR;
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
+            {
+                abort();
+            }
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
+            {
+                abort();
+            }
         }else if(done){
             ret = RESPONSE_LINE_READ;
         }
+        return ret;
     }else{
 
         if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
@@ -1234,8 +1274,7 @@ static unsigned request_body_write(struct selector_key *key){
         printf("write content == 0\n");
         ret = RESPONSE_LINE_READ;
     }
-   
- 
+
     return ret;
 }
 
@@ -1480,12 +1519,21 @@ static void response_body_init(const unsigned state, struct selector_key *key){
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.response_message;
     if(rm->content_lengt > 0){
-        if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_READ))
-        {
-                abort();
+        size_t rbytes;
+        buffer_read_ptr(rm->rb,&rbytes);
+        printf("puedo leer %d  bytes \n", rbytes);
+        if(rbytes < rm->content_lengt){
+            if(buffer_can_write(rm->rb)){
+                printf("puedo escribir del rb\n");
+                   if (SELECTOR_SUCCESS != selector_set_interest(key->s, data->origin_fd, OP_READ))
+                    {
+                            abort();
+                    }
+            }
+          
         }
         if(buffer_can_read(rm->rb)){
-
+            ("puedo leer del rb\n");
             // ademas de la request line, se escribieron headers y/o body en el buffer de lectura del cliente
             if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_WRITE))
             {
@@ -1504,6 +1552,8 @@ static unsigned response_body_read(struct selector_key *key){
     printf("response body read\n");
     struct httpd *data = ATTACHMENT(key);
     struct request_message_st *rm = &data->origin.response_message;
+    printf("key fd %d\n", key->fd);
+    printf("client fd %d\n", data->client_fd);
     buffer * origin_rb = rm->rb;
     data->status = OK;
     unsigned ret = RESPONSE_BODY;
@@ -1525,11 +1575,21 @@ static unsigned response_body_write(struct selector_key *key){
 
     buffer *origin_rb = rm->rb;
     data->status = OK;
-    unsigned ret = REQUEST_BODY;
+    unsigned ret = RESPONSE_BODY;
+    printf("key fd %d\n", key->fd);
+    printf("client fd %d\n", data->client_fd);
     if(rm->content_lengt > 0){
         bool done = send_body(data->origin_fd, data->client_fd, origin_rb,rm,key->s,&data->status);
         if(data->status != OK){
             ret = ERROR;
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
+            {
+                abort();
+            }
+            if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
+            {
+                abort();
+            }
         }else if(done){
             ret = DONE;
         }
@@ -1544,16 +1604,7 @@ static unsigned response_body_write(struct selector_key *key){
 
     return ret;
 
-    finally:
-    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->client_fd, OP_NOOP))
-    {
-        abort();
-    }
-    if (SELECTOR_SUCCESS != selector_set_interest(key->s,data->origin_fd, OP_NOOP))
-    {
-        abort();
-    }
-    return ret;
+
 }
 
 

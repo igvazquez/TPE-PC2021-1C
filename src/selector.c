@@ -231,16 +231,18 @@ items_update_fdset_for_fd(fd_selector s, const struct item * item) {
   
     if(ITEM_USED(item)) {
         if(item->interest & OP_READ) {
-         
+            printf("seteo READ para %d\n", item->fd);
             FD_SET(item->fd, &(s->master_r));
         }
     
         if(item->interest & OP_WRITE) {
-         
+          printf("seteo WRITE para %d\n", item->fd);
             FD_SET(item->fd, &(s->master_w));
         }
-        
-    }
+        if(item->interest & OP_NOOP){
+            printf("seteo OP_NOOP para %d\n",item->fd);
+        }
+        }
 }
 
 /**
@@ -504,30 +506,6 @@ handle_iteration(fd_selector s) {
 
 
 
-static void
-handle_block_notifications(fd_selector s) {
-     
-    struct selector_key key = {
-        .s = s,
-    };
-    pthread_mutex_lock(&s->resolution_mutex);
-    for(struct blocking_job *j = s->resolution_jobs;
-        j != NULL ;
-        j  = j->next) {
-
-        struct item *item = s->fds + j->fd;
-        if(ITEM_USED(item)) {
-            key.fd   = item->fd;
-            key.data = item->data;
-            item->handler->handle_block(&key);
-        }
-
-        free(j);
-    }
-    s->resolution_jobs = 0;
-    pthread_mutex_unlock(&s->resolution_mutex);
-   
-}
 
 
 selector_status
@@ -559,6 +537,7 @@ finally:
 
 selector_status
 selector_select(fd_selector s) {
+    printf("selector select\n");
     selector_status ret = SELECTOR_SUCCESS;
 
     memcpy(&s->slave_r, &s->master_r, sizeof(s->slave_r));
@@ -596,9 +575,7 @@ selector_select(fd_selector s) {
         handle_iteration(s);
         
     }
-    if(ret == SELECTOR_SUCCESS) {
-        handle_block_notifications(s);
-    }
+ 
 finally:
     return ret;
 }
