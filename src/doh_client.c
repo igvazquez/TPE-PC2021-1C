@@ -253,7 +253,6 @@ int doh_request(doh * doh){
 }
 
 void doh_write (struct selector_key * key){
-    printf("doh write\n");
     doh * current_doh = DOH_ATTACHMENT(key);
 
     int socket_error;
@@ -287,11 +286,9 @@ void doh_write (struct selector_key * key){
     }
 
     finally:
-        printf("doh wwrite resolve error\n");
         current_doh->resolve_info->status = RESOLVE_ERROR;
           doh_kill(key);   
         if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
-            printf("fallo unnregister client socket\n");
             //si falla entonces cierro desde aca la conexión con el cliente
             close_client(key);
         }
@@ -301,9 +298,7 @@ void doh_write (struct selector_key * key){
 }
 
 static void close_client(struct selector_key *key){
-    printf("close client\n");
     if(SELECTOR_SUCCESS != selector_unregister_fd(key->s, DOH_ATTACHMENT(key)->client_socket)) {
-        printf("fallo unnregister client socket\n");
         abort();
     }
 
