@@ -31,20 +31,20 @@ void doh_init(doh * doh, char * fqdn){
     doh->server_info = get_doh_info();
 }
 void doh_close(struct selector_key * key){
-    printf("doh close\n");
+  
     doh *current_doh = DOH_ATTACHMENT(key);
     if (close(current_doh->socket) == -1)
     {
         abort();
     }   
     free(current_doh);
-    printf("termino doh close\n");
+ 
 }
 
 
 
 resolve_status resolve (char *fqdn, fd_selector selector, int request_socket, address_resolve_info * resolve_info){
-    printf("doh resolve\n");
+ 
 
     int fd = socket(AF_INET,SOCK_STREAM,0);
     if(fd ==-1){
@@ -77,7 +77,7 @@ resolve_status resolve (char *fqdn, fd_selector selector, int request_socket, ad
     if( connect(fd,(const struct sockaddr * ) &addr,sizeof(addr)) ==-1){
         //Como es bloqueante falla, veo  q tiene errno
         if (errno == EINPROGRESS){
-            printf("connect doh einprogresws\n");
+          
             //nos registramos en el selector para escribir la request
             if( selector_register(selector,fd,&handler,OP_WRITE,doh) != SELECTOR_SUCCESS)
                 goto finally;
@@ -88,7 +88,6 @@ resolve_status resolve (char *fqdn, fd_selector selector, int request_socket, ad
   
     }
 finally:
-    printf("doh resolve finally\n");
     if(fd != -1){
         close(fd);
     }
@@ -125,7 +124,7 @@ void get_response(doh * doh , doh_response * doh_response){
 }
 
 void doh_read(struct selector_key * key){
-    printf("doh_read\n");
+  
     doh * current_doh = (doh*) key->data;
     doh_response response ;
     size_t nbyte = 0;
@@ -141,42 +140,41 @@ void doh_read(struct selector_key * key){
             free(response.dns_response);
             int client_socket = current_doh->client_socket;
             doh_kill(key);
-            printf("seteo client socket en OP WRITE\n");
+          
             if(selector_set_interest(key->s,client_socket, OP_WRITE) != SELECTOR_SUCCESS){
-                printf("falla set interest cleint socket read\n");
                 close_client(key);
             }
-            printf("termina doh _read\n");
+         
             return;
         }else if(response.current_state == error){
-            printf("state == error\n");
+          
             goto finally;
         }
          
     }else{
-        printf("recv <= 0\n");
+        
         goto finally;
     }
 finally:
-    printf("finally read\n");
+ 
     current_doh->resolve_info->status = RESOLVE_ERROR;
     free(response.dns_response);
     doh_kill(key);
     if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
-        printf("falla set interest client socket finally read\n");
+        
         close_client(key);
     }
 
 }
 
 void doh_kill(struct selector_key * key){
-    printf("doh_ kill\n");
+   
     doh * current_doh = (doh*) key->data;
     //nos salimos del selector y liberamos recursos
     if(selector_unregister_fd(key->s,current_doh->socket) == -1){
         abort();
     }
-    printf("termina doh kill\n");
+   
 }   
 
 //arma la query en http con metodo GET
@@ -255,7 +253,6 @@ int doh_request(doh * doh){
 }
 
 void doh_write (struct selector_key * key){
-    printf("doh write\n");
     doh * current_doh = DOH_ATTACHMENT(key);
 
     int socket_error;
@@ -289,11 +286,9 @@ void doh_write (struct selector_key * key){
     }
 
     finally:
-        printf("doh wwrite resolve error\n");
         current_doh->resolve_info->status = RESOLVE_ERROR;
           doh_kill(key);   
         if(selector_set_interest(key->s,current_doh->client_socket, OP_WRITE) != SELECTOR_SUCCESS){
-            printf("fallo unnregister client socket\n");
             //si falla entonces cierro desde aca la conexión con el cliente
             close_client(key);
         }
@@ -303,9 +298,7 @@ void doh_write (struct selector_key * key){
 }
 
 static void close_client(struct selector_key *key){
-    printf("close client\n");
     if(SELECTOR_SUCCESS != selector_unregister_fd(key->s, DOH_ATTACHMENT(key)->client_socket)) {
-        printf("fallo unnregister client socket\n");
         abort();
     }
 

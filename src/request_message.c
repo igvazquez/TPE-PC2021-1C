@@ -18,7 +18,7 @@ enum states
     FIELD_VALUE_CR,
     FIELD_VALUE_CRLF,
     FIELD_VALUE_CRLF_CR,
-    BODY,
+    DONE,
     ERROR
 };
 
@@ -99,7 +99,7 @@ static const struct parser_state_transition ST_FIELD_NAME0[] =  {
 };
 
 static const struct parser_state_transition ST_FIELD_NAME0_CR[] =  {
-    {.when = '\n',        .dest = BODY,         .act1 = body_start,}, 
+    {.when = '\n',        .dest = DONE,         .act1 = body_start,}, 
     {.when = ANY,        .dest = ERROR,         .act1 = unexpected,},
 };
 
@@ -135,12 +135,14 @@ static const struct parser_state_transition ST_FIELD_VALUE_CRLF[] =  {
 
 
 static const struct parser_state_transition ST_FIELD_VALUE_CRLF_CR[] =  {
-    {.when = '\n',        .dest = BODY,          .act1 = body_start,},
+    {.when = '\n',        .dest = DONE,          .act1 = body_start,},
     {.when = ANY,         .dest = ERROR,         .act1 = unexpected,},
 };
 
-static const struct parser_state_transition ST_BODY[] =  {
-    {.when = ANY,        .dest = BODY,           .act1 = body,},
+
+static const struct parser_state_transition ST_DONE[] =  {
+  
+    {.when = ANY,         .dest = ERROR,         .act1 = unexpected,},
 };
 
 static const struct parser_state_transition ST_ERROR[] =  {
@@ -159,7 +161,7 @@ static const struct parser_state_transition *states[] = {
     ST_FIELD_VALUE_CR,
     ST_FIELD_VALUE_CRLF,
     ST_FIELD_VALUE_CRLF_CR,
-    ST_BODY,
+    ST_DONE,
     ST_ERROR,
 };
 
@@ -174,7 +176,7 @@ static const size_t states_n [] = {
     N(ST_FIELD_VALUE_CR),
     N(ST_FIELD_VALUE_CRLF),
     N(ST_FIELD_VALUE_CRLF_CR),
-    N(ST_BODY),
+    N(ST_ERROR),
     N(ST_ERROR),
 };
 
@@ -303,12 +305,6 @@ static error_status_code save_data(const struct parser_event*e,struct request_me
                 parser->data[(parser->data_index)++] = e->data[i];                    
             }
             break;
-        case RM_BODY:
-            for (unsigned i = 0; i < e->n;i++){        
-                parser->data[(parser->data_index)++] = e->data[i];      
-            }
-
-            break;
         default:
             break;
     }
@@ -322,6 +318,7 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
     switch (e->type)
     {
         case RM_FIELD_NAME:
+           
             if (parser->mismatch_counter != parser->header_quantity)
             {
                 header_parsers_feed(e, parser);
@@ -335,6 +332,7 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
             }
             break;
         case RM_FIELD_NAME_END:
+       
             header_parsers_reset(parser);
             if(parser->save_data){
                 if((*status = save_data(e, parser)) != OK){
@@ -346,6 +344,7 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
         case RM_FIELD_VALUE:
         
             if(current_detection != NULL && (current_detection->interest & HEADER_STORAGE)){
+              
                 for (unsigned i = 0; i < e->n; i++){
                     if(current_detection->value_index > MAX_HEADER_VALUE_LENGTH){
                         *status = REQUEST_HEADER_TOO_LARGE;
@@ -361,16 +360,18 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
             }
             break;
         case RM_FIELD_VALUE_END:
+       
             // si detecté algun header, ya terminó
             if(current_detection != NULL){
                 if(current_detection->interest & HEADER_STORAGE){
                     current_detection->value_storage[current_detection->value_index++] = '\0';
                     current_detection->value_index = 0;
+                   
                 }
                 
                 if (current_detection->on_value_end != NULL)
                 {
-        
+                                 
                     current_detection->on_value_end(parser,log_data,status);
                     if(*status != OK){
                         return true;
@@ -388,36 +389,17 @@ bool request_message_parser_process(const struct parser_event *e, request_messag
             }
             break;
         case RM_BODY_START:
+           
             if(parser->save_data){
                 if((*status = save_data(e, parser)) != OK){
                     return true;
                 }
             }
-       
-            if(parser->content_lenght == 0){
-                return true;
-            }
+
+           
+            return true;
             break;
-        case RM_BODY:
-          
-             for (unsigned i = 0; i < e->n;i++){
-                if(parser->content_lenght > 0){
-                        
-                    parser->content_lenght--;
-                     
-                }else{
-                     break;
-                }           
-            }
-            
-            if(parser->save_data){
-                save_data(e, parser);
-            }
-            if(parser->content_lenght == 0){
-                
-                return true;
-            }
-            break;
+    
         case RM_UNEXPECTED:
             *status = BAD_REQUEST;
             return true;

@@ -511,6 +511,14 @@ static void set_authority_form(struct parser* p){
     parser_set_state(p, HOST0);
 }
 
+bool is_connect(char* method){
+    return stricmp("CONNECT", method) == 0;
+}
+bool is_options(char* method){
+    return stricmp("OPTIONS", method) == 0;
+}
+
+
 static error_status_code process_event(const struct parser_event * e,request_line_parser *parser){
     struct parsed_info *parsed_info= &parser->parsed_info;
     switch (e->type)
@@ -573,7 +581,7 @@ static error_status_code process_event(const struct parser_event * e,request_lin
         parsed_info->version_minor = e->data[0] - '0';  
         break;
     case RL_DONE:
-        if(parsed_info->origin_form_counter == 0 && stricmp(parsed_info->method_buffer,"CONNECT") != 0){
+        if(parsed_info->origin_form_counter == 0 && !is_connect(parsed_info->method_buffer) && !is_options(parsed_info->method_buffer)){
             parsed_info->origin_form_buffer[parsed_info->origin_form_counter++] =  '/';
             parsed_info->origin_form_buffer[parsed_info->origin_form_counter] =  '\0';
         }
